@@ -6,6 +6,7 @@ use termwiz::{
 
 pub mod align;
 pub mod border;
+pub mod float;
 pub mod label;
 pub mod layout;
 pub mod stack;
