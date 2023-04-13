@@ -14,6 +14,37 @@ pub struct Rect {
     pub height: f64,
 }
 
+impl Rect {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    pub fn resize(&mut self, width: usize, height: usize) {
+        self.width = width as f64;
+        self.height = height as f64;
+    }
+
+    pub fn center(&self) -> (f64, f64) {
+        (self.x + self.width / 2.0, self.y + self.height / 2.0)
+    }
+
+    pub fn contains(&self, x: f64, y: f64) -> bool {
+        x >= self.x && x <= self.x + self.width && y >= self.y && y <= self.y + self.height
+    }
+
+    pub fn intersects(&self, other: &Rect) -> bool {
+        self.contains(other.x, other.y)
+            || self.contains(other.x + other.width, other.y)
+            || self.contains(other.x, other.y + other.height)
+            || self.contains(other.x + other.width, other.y + other.height)
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum LayoutAxis {
     Horizontal,

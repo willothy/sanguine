@@ -27,12 +27,6 @@ impl FloatStack {
         }
         let z = float.z_index;
         self.floats.insert(float.z_index, float);
-        // self.floats.insert(float);
-
-        // if let Some(old) = self.floats.insert(float.z_index, float) {
-        //     self.floats.insert(old.z_index - 1, old);
-        //     self.
-        // }
         z
     }
 
