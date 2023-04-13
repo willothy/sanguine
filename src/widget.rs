@@ -4,7 +4,7 @@ use termwiz::{
     terminal::{buffered::BufferedTerminal, Terminal},
 };
 
-use crate::layout::Rect;
+use crate::{layout::Rect, SizeHint};
 
 pub trait Widget {
     /// Render the widget onto the terminal, within the specified rectangle.
@@ -15,6 +15,8 @@ pub trait Widget {
     fn constrain(&self, rect: &Rect, parent: &Rect) -> Option<Rect> {
         None
     }
+
+    fn size_hint(&self, parent: &Rect) -> SizeHint;
 
     /// Handle an input event.
     /// Return true if the event was handled, false to propagate to the event parent.

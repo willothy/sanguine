@@ -8,6 +8,7 @@ use crate::{
     align::{Align, Alignment},
     layout::Rect,
     widget::Widget,
+    SizeHint,
 };
 
 #[derive(Debug, Clone)]
@@ -111,6 +112,10 @@ impl Widget for Label {
                 y: Position::Relative(1),
             });
         }
+    }
+
+    fn size_hint(&self, parent: &Rect) -> SizeHint {
+        SizeHint::fill()
     }
 
     // fn handle_event(&mut self, _event: &InputEvent) {}

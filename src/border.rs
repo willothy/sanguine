@@ -4,7 +4,7 @@ use termwiz::{
     terminal::{buffered::BufferedTerminal, Terminal},
 };
 
-use crate::{layout::Rect, widget::Widget};
+use crate::{layout::Rect, widget::Widget, SizeHint};
 
 pub struct BorderChars {
     pub top_left: char,
@@ -130,5 +130,9 @@ impl Widget for Border {
         changes.push(Change::Text(self.chars.bottom_right.to_string()));
         surface.add_changes(changes);
         self.inner.render(&inner_rect, surface);
+    }
+
+    fn size_hint(&self, parent: &Rect) -> crate::SizeHint {
+        SizeHint::fill()
     }
 }

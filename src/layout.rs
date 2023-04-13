@@ -30,6 +30,12 @@ pub enum SizeHint {
     Percentage(f64),
 }
 
+impl SizeHint {
+    pub fn fill() -> SizeHint {
+        SizeHint::Percentage(1.0)
+    }
+}
+
 impl Layout {
     pub fn h(widgets: Vec<Box<dyn Widget>>) -> Box<Self> {
         Box::new(Self {
@@ -48,38 +54,63 @@ impl Layout {
 
 impl Widget for Layout {
     fn render(&self, rect: &Rect, term: &mut Surface) {
-        let n = self.widgets.len() as f64;
-        let width = match self.axis {
-            LayoutAxis::Horizontal => rect.width as f64 / n,
-            LayoutAxis::Vertical => rect.width,
-        };
-        let height = match self.axis {
-            LayoutAxis::Horizontal => rect.height,
-            LayoutAxis::Vertical => rect.height as f64 / n,
+        use LayoutAxis::*;
+
+        let nwidgets = self.widgets.len();
+        let mut available = match self.axis {
+            Horizontal => rect.width,
+            Vertical => rect.height,
         };
 
+        available = available
+            - self
+                .widgets
+                .iter()
+                .filter_map(|w| match w.size_hint(&rect) {
+                    SizeHint::Fixed(s) => Some(s as f64),
+                    _ => None,
+                })
+                .sum::<f64>()
+            + if nwidgets % 2 != 0 && nwidgets > 1 {
+                1.
+            } else {
+                0.
+            };
+
         self.widgets.iter().enumerate().for_each(|(i, widget)| {
-            let widget_box = Rect {
-                x: if self.axis == LayoutAxis::Horizontal {
+            let (width, height) = match widget.size_hint(&rect) {
+                SizeHint::Fixed(s) => match self.axis {
+                    Horizontal => (s as f64, rect.height),
+                    Vertical => (rect.width, s as f64),
+                },
+                SizeHint::Percentage(p) => {
+                    let p = p * (1.0 / nwidgets as f64);
+                    match self.axis {
+                        Horizontal => ((available as f64 * p), rect.height),
+                        Vertical => (rect.width, (available as f64 * p)),
+                    }
+                }
+            };
+            let widget_rect = Rect {
+                x: if self.axis == Horizontal {
                     rect.x + width * i as f64
                 } else {
                     rect.x
                 },
-                y: if self.axis == LayoutAxis::Vertical {
+                y: if self.axis == Vertical {
                     rect.y + height * i as f64
                 } else {
                     rect.y
                 },
-                width,
-                height,
+                width: width as f64,
+                height: height as f64,
             };
-            let rect = if let Some(constraint) = widget.constrain(&widget_box, &rect) {
-                constraint
-            } else {
-                widget_box.clone()
-            };
-            widget.render(&rect, term)
+            widget.render(&widget_rect, term);
         });
+    }
+
+    fn size_hint(&self, parent: &Rect) -> SizeHint {
+        SizeHint::fill()
     }
 
     // fn handle_event(&mut self, event: &InputEvent) {
