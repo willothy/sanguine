@@ -66,13 +66,15 @@ impl From<BorderVariant> for BorderChars {
 pub struct Border {
     pub chars: BorderChars,
     pub inner: Box<dyn Widget>,
+    pub size: Option<SizeHint>,
 }
 
 impl Border {
-    pub fn new(border: BorderVariant, inner: Box<dyn Widget>) -> Self {
+    pub fn new(border: BorderVariant, inner: Box<dyn Widget>, size: Option<SizeHint>) -> Self {
         Self {
             chars: border.into(),
             inner,
+            size,
         }
     }
 }
@@ -132,7 +134,7 @@ impl Widget for Border {
         self.inner.render(&inner_rect, surface);
     }
 
-    fn size_hint(&self, parent: &Rect) -> crate::SizeHint {
-        SizeHint::fill()
+    fn size_hint(&self, _parent: &Rect) -> crate::SizeHint {
+        self.size.clone().unwrap_or(SizeHint::fill())
     }
 }
