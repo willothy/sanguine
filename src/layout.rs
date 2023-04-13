@@ -1,5 +1,6 @@
 use termwiz::{
     input::InputEvent,
+    surface::Surface,
     terminal::{buffered::BufferedTerminal, Terminal},
 };
 
@@ -19,20 +20,25 @@ pub enum LayoutAxis {
     Vertical,
 }
 
-pub struct Layout<T: Terminal> {
-    widgets: Vec<Box<dyn Widget<T>>>,
+pub struct Layout {
+    widgets: Vec<Box<dyn Widget>>,
     axis: LayoutAxis,
 }
 
-impl<T: Terminal> Layout<T> {
-    pub fn h(widgets: Vec<Box<dyn Widget<T>>>) -> Box<Self> {
+pub enum SizeHint {
+    Fixed(usize),
+    Percentage(f64),
+}
+
+impl Layout {
+    pub fn h(widgets: Vec<Box<dyn Widget>>) -> Box<Self> {
         Box::new(Self {
             widgets,
             axis: LayoutAxis::Horizontal,
         })
     }
 
-    pub fn v(widgets: Vec<Box<dyn Widget<T>>>) -> Box<Self> {
+    pub fn v(widgets: Vec<Box<dyn Widget>>) -> Box<Self> {
         Box::new(Self {
             widgets,
             axis: LayoutAxis::Vertical,
@@ -40,8 +46,8 @@ impl<T: Terminal> Layout<T> {
     }
 }
 
-impl<T: Terminal> Widget<T> for Layout<T> {
-    fn render(&self, rect: &Rect, term: &mut BufferedTerminal<T>) {
+impl Widget for Layout {
+    fn render(&self, rect: &Rect, term: &mut Surface) {
         let n = self.widgets.len() as f64;
         let width = match self.axis {
             LayoutAxis::Horizontal => rect.width as f64 / n,
@@ -51,28 +57,32 @@ impl<T: Terminal> Widget<T> for Layout<T> {
             LayoutAxis::Horizontal => rect.height,
             LayoutAxis::Vertical => rect.height as f64 / n,
         };
+
         self.widgets.iter().enumerate().for_each(|(i, widget)| {
-            widget.render(
-                &Rect {
-                    x: if self.axis == LayoutAxis::Horizontal {
-                        rect.x + width * i as f64
-                    } else {
-                        rect.x
-                    },
-                    y: if self.axis == LayoutAxis::Horizontal {
-                        rect.y
-                    } else {
-                        rect.y + height * i as f64
-                    },
-                    width,
-                    height,
+            let widget_box = Rect {
+                x: if self.axis == LayoutAxis::Horizontal {
+                    rect.x + width * i as f64
+                } else {
+                    rect.x
                 },
-                term,
-            )
+                y: if self.axis == LayoutAxis::Vertical {
+                    rect.y + height * i as f64
+                } else {
+                    rect.y
+                },
+                width,
+                height,
+            };
+            let rect = if let Some(constraint) = widget.constrain(&widget_box, &rect) {
+                constraint
+            } else {
+                widget_box.clone()
+            };
+            widget.render(&rect, term)
         });
     }
 
-    fn handle_event(&mut self, event: &InputEvent) {
-        self.widgets.iter_mut().for_each(|w| w.handle_event(event));
-    }
+    // fn handle_event(&mut self, event: &InputEvent) {
+    //     self.widgets.iter_mut().for_each(|w| w.handle_event(event));
+    // }
 }

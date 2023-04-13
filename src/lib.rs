@@ -19,7 +19,7 @@ pub use stack::*;
 pub use widget::*;
 
 pub struct Ui<T: Terminal> {
-    pub root: Box<dyn Widget<T>>,
+    pub root: Box<dyn Widget>,
     pub terminal: BufferedTerminal<T>,
     pub queue: VecDeque<InputEvent>,
 }

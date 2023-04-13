@@ -1,6 +1,6 @@
 use termwiz::{
     input::InputEvent,
-    surface::{Change, Position},
+    surface::{Change, Position, Surface},
     terminal::{buffered::BufferedTerminal, Terminal},
 };
 
@@ -54,8 +54,8 @@ impl Align for Label {
     }
 }
 
-impl<T: Terminal> Widget<T> for Label {
-    fn render(&self, rect: &Rect, term: &mut BufferedTerminal<T>) {
+impl Widget for Label {
+    fn render(&self, rect: &Rect, term: &mut Surface) {
         term.add_change(Change::CursorPosition {
             x: Position::Absolute(rect.x.floor() as usize),
             y: Position::Absolute(rect.y.floor() as usize),
@@ -113,5 +113,5 @@ impl<T: Terminal> Widget<T> for Label {
         }
     }
 
-    fn handle_event(&mut self, _event: &InputEvent) {}
+    // fn handle_event(&mut self, _event: &InputEvent) {}
 }
