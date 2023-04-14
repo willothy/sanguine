@@ -30,9 +30,9 @@ Watch in fullscreen, the lines don't render properly in a small viewport.
 
 ```sh
 
-$ git clone git@github.com:willothy/red.git
+$ git clone git@github.com:willothy/sanguine.git
 
-$ cd red
+$ cd sanguine
 
 $ cargo run --example demo
 
