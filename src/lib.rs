@@ -1,10 +1,9 @@
 use float::{Float, FloatStack};
 use std::collections::VecDeque;
 use termwiz::{
-    caps::{Capabilities, ProbeHints},
     input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseEvent},
-    surface::{Change, Surface},
-    terminal::{buffered::BufferedTerminal, new_terminal, Terminal},
+    surface::Change,
+    terminal::{buffered::BufferedTerminal, Terminal},
 };
 
 pub mod align;
