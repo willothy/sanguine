@@ -463,15 +463,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 
 [[package]]
-name = "red-tui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "itertools",
- "termwiz",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -507,6 +498,15 @@ name = "regex-syntax"
 version = "0.6.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
+
+[[package]]
+name = "sanguine"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "itertools",
+ "termwiz",
+]
 
 [[package]]
 name = "semver"
