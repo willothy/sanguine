@@ -1,9 +1,3 @@
-use sanguine::{
-    align::Align,
-    border::{Border, BorderVariant},
-    label::Label,
-    layout::{Layout, Rect, SizeHint},
-};
 use termwiz::{
     caps::Capabilities,
     surface::Change,
@@ -11,100 +5,45 @@ use termwiz::{
     Result,
 };
 
+use sanguine::{
+    align::Align,
+    bordered,
+    float::Float,
+    horizontal, label,
+    layout::{Rect, SizeHint},
+    vertical, Sanguine,
+};
+
 fn main() -> Result<()> {
     let caps = Capabilities::new_from_env()?;
     let mut term = new_terminal(caps)?;
-    // term.enter_alternate_screen()?;
     term.set_raw_mode()?;
 
     let mut buf = BufferedTerminal::new(term)?;
+    // Hide the cursor before initializing
     buf.add_change(Change::CursorVisibility(
         termwiz::surface::CursorVisibility::Hidden,
     ));
 
     buf.flush()?;
 
-    macro_rules! horizontal {
-        [$($v:expr),*$(,)? => $s:expr] => {
-            Layout::h(vec![
-                $($v),*
-            ], $s)
-        };
-    }
-
-    macro_rules! vertical {
-        [$($v:expr),*$(,)?=> $s:expr] => {
-            Layout::v(vec![
-                $($v),*
-            ], $s)
-        };
-    }
-
-    macro_rules! label {
-        [$($v:expr),+$(,)?] => {
-            Label::new(&format!($($v),+))
-        };
-    }
-
-    macro_rules! bordered {
-        ($v:expr => $s:expr) => {
-            Box::new(Border::new(BorderVariant::Rounded, $v, $s))
-        };
-    }
-
-    let _layouts = [
+    let mut ui = Sanguine::new(
         horizontal![
-            bordered![label!["Window 1!"].center() => Some(SizeHint::Percentage(0.3))],
-            bordered![label!["Window 2!"].center() => Some(SizeHint::Percentage(0.7))],
-            => None
-        ],
-        vertical![
-            bordered![label!["Window 1!"].center() => None],
-            bordered![label!["Window 2!"].center() => None],
-            => None
-        ],
-        horizontal![
-            vertical![
-                bordered![label!["Window 1!"].center() => None],
-                => None
-            ],
-            vertical![
-                bordered![label!["Window 2!"].center() => None],
-                bordered![label!["Window 3!"].center() => None],
-                bordered![label!["Window 4!"].center() => None],
-                => None
-            ],
-            => None
-        ],
-        horizontal![
-            vertical![
-                bordered![label!["Window 1!"].center() => None],
-                bordered![label!["Window 2!"].center() => None],
-                => None
-            ],
-            vertical![
-                bordered![label!["Window 3!"].center() => None],
-                => None
-            ],
-            => None
-        ],
-    ];
-
-    let mut ui = sanguine::Ui::new(
-        horizontal![
+            // Bordered window, 40% of parent size
             bordered![label!["Window 1!"].center() => Some(SizeHint::Percentage(0.4))],
             vertical![
                 bordered![label!["Window 2!"].center() => Some(SizeHint::Percentage(0.4))],
                 bordered![label!["Window 3!"].center() => Some(SizeHint::Percentage(0.6))],
+                // No sizing defaults to Fill, making this automatically take 60% of parent size
                 => None
             ],
+            // No sizing for the root element, it will fill the full screen
             => None
         ],
         buf,
     )?;
 
-    ui.init()?;
-    ui.add_float(sanguine::float::Float {
+    ui.add_float(Float {
         contents: bordered![label!["Float 1"] => None],
         rect: Rect {
             x: 10.,
@@ -114,7 +53,7 @@ fn main() -> Result<()> {
         },
         z_index: 1,
     });
-    ui.add_float(sanguine::float::Float {
+    ui.add_float(Float {
         contents: bordered![label!["Float 2"] => None],
         rect: Rect {
             x: 60.,
@@ -125,7 +64,7 @@ fn main() -> Result<()> {
         z_index: 0,
     });
 
-    while ui.render()? {}
+    ui.exec()?;
 
     Ok(())
 }

@@ -1,6 +1,6 @@
 [package]
 name = "sanguine"
-version = "0.1.0-dev-r1"
+version = "0.1.0-dev-r2"
 edition = "2021"
 authors = ["Will Hopkins <willothyh@gmail.com"]
 description = "A library for creating dynamic TUI experiences in Rust"
@@ -8,7 +8,7 @@ repository = "https://github.com/willothy/sanguine"
 license = "MIT"
 readme = "README.md"
 keywords = ["tui", "terminal", "user-interface"]
-categories = ["tui", "terminal", "user-interface"]
+categories = ["gui", "command-line-interface"]
 
 [dependencies]
 anyhow = "1.0.70"

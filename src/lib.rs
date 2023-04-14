@@ -1,6 +1,6 @@
 use float::{Float, FloatStack};
 use layout::Rect;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::atomic::AtomicBool};
 use termwiz::{
     input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseEvent},
     surface::Change,
@@ -18,16 +18,65 @@ pub mod widget;
 pub use anyhow;
 use anyhow::Result;
 
-pub struct Ui<T: Terminal> {
+#[macro_export]
+macro_rules! horizontal {
+    [$($v:expr),*$(,)? => $s:expr] => {
+        sanguine::layout::Layout::h(vec![
+            $($v),*
+        ], $s)
+    };
+}
+
+#[macro_export]
+macro_rules! vertical {
+    [$($v:expr),*$(,)?=> $s:expr] => {
+        sanguine::layout::Layout::v(vec![
+            $($v),*
+        ], $s)
+    };
+}
+
+#[macro_export]
+macro_rules! label {
+    [$($v:expr),+$(,)?] => {
+        sanguine::label::Label::new(&format!($($v),+))
+    };
+}
+
+#[macro_export]
+macro_rules! bordered {
+    ($v:expr => $s:expr) => {
+        Box::new(sanguine::border::Border::new(
+            sanguine::border::BorderVariant::Rounded,
+            $v,
+            $s,
+        ))
+    };
+}
+
+pub struct UiState {
+    quit: AtomicBool,
+}
+
+impl UiState {
+    fn new() -> Self {
+        Self {
+            quit: AtomicBool::new(false),
+        }
+    }
+}
+
+pub struct Sanguine<T: Terminal> {
     pub root: Box<dyn Widget>,
     pub buffer: BufferedTerminal<T>,
     pub floats: FloatStack,
     pub queue: VecDeque<InputEvent>,
     pub rect: Rect,
     pub current_float: Option<(usize, Rect)>,
+    state: UiState,
 }
 
-impl<T: Terminal> Ui<T> {
+impl<T: Terminal> Sanguine<T> {
     pub fn new(root: Box<dyn Widget>, surface: BufferedTerminal<T>) -> Result<Self> {
         Ok(Self {
             root,
@@ -36,7 +85,21 @@ impl<T: Terminal> Ui<T> {
             queue: VecDeque::new(),
             rect: Rect::new(0., 0., 0., 0.),
             current_float: None,
+            state: UiState::new(),
         })
+    }
+
+    pub fn exec(mut self) -> Result<()> {
+        self.init()?;
+        while !self
+            .state
+            .quit
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.render()?;
+        }
+
+        Ok(())
     }
 
     pub fn init(&mut self) -> Result<()> {
@@ -132,7 +195,10 @@ impl<T: Terminal> Ui<T> {
                             termwiz::surface::CursorVisibility::Visible,
                         ));
                         self.buffer.flush()?;
-                        return Ok(false);
+                        self.state
+                            .quit
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        // return Ok(false);
                     }
                 }
                 InputEvent::Key(KeyEvent {
