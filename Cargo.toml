@@ -1,6 +1,6 @@
 [package]
 name = "sanguine"
-version = "0.1.0-dev"
+version = "0.1.0-dev-r1"
 edition = "2021"
 authors = ["Will Hopkins <willothyh@gmail.com"]
 description = "A library for creating dynamic TUI experiences in Rust"

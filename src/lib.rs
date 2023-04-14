@@ -2,7 +2,7 @@ use float::{Float, FloatStack};
 use layout::Rect;
 use std::collections::VecDeque;
 use termwiz::{
-    input::{InputEvent, MouseEvent},
+    input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseEvent},
     surface::Change,
     terminal::{buffered::BufferedTerminal, Terminal},
 };
@@ -119,12 +119,87 @@ impl<T: Terminal> Ui<T> {
                     modifiers,
                 }))
             }
-            Ok(Some(input)) => {
-                // TODO: Feed input into the Ui
-                // Get focused widget
-                // Send input to widget
-                self.queue.push_back(input)
-            }
+            Ok(Some(input)) => match input {
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Char(c),
+                    modifiers,
+                }) => {
+                    if c == 'q' && modifiers == Modifiers::CTRL {
+                        // Quit the app when q is pressed
+                        self.buffer
+                            .add_change(Change::ClearScreen(Default::default()));
+                        self.buffer.add_change(Change::CursorVisibility(
+                            termwiz::surface::CursorVisibility::Visible,
+                        ));
+                        self.buffer.flush()?;
+                        return Ok(false);
+                    }
+                }
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::UpArrow,
+                    modifiers,
+                }) => {
+                    if let Some((_id, rect)) = &mut self.current_float {
+                        if modifiers == Modifiers::SHIFT {
+                            rect.height -= 1.;
+                        } else {
+                            rect.y -= 1.;
+                        }
+                    }
+                }
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::DownArrow,
+                    modifiers,
+                }) => {
+                    if let Some((_id, rect)) = &mut self.current_float {
+                        if modifiers == Modifiers::SHIFT {
+                            rect.height += 1.;
+                        } else {
+                            rect.y += 1.;
+                        }
+                    }
+                }
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::LeftArrow,
+                    modifiers,
+                }) => {
+                    if let Some((_id, rect)) = &mut self.current_float {
+                        if modifiers == Modifiers::SHIFT {
+                            rect.width -= 1.;
+                        } else {
+                            rect.x -= 1.;
+                        }
+                    }
+                }
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::RightArrow,
+                    modifiers,
+                }) => {
+                    if let Some((_id, rect)) = &mut self.current_float {
+                        if modifiers == Modifiers::SHIFT {
+                            rect.width += 1.;
+                        } else {
+                            rect.x += 1.;
+                        }
+                    }
+                }
+                InputEvent::Key(KeyEvent {
+                    key: KeyCode::Tab,
+                    modifiers,
+                }) => {
+                    if modifiers == Modifiers::SHIFT {
+                        self.cycle_float();
+                    } else {
+                        // self.cycle_layout();
+                    }
+                }
+                input => {
+                    // TODO: Feed input into the Ui
+                    // Get focused widget
+                    // Send input to widget
+                    self.queue.push_back(input);
+                }
+            },
             Ok(None) => {}
             Err(e) => {
                 return Err(anyhow::anyhow!("{}", e));
