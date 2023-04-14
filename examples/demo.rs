@@ -1,4 +1,9 @@
-use red_tui::{Align, Border, BorderVariant, Label, Layout, Rect, Ui};
+use sanguine::{
+    align::Align,
+    border::{Border, BorderVariant},
+    label::Label,
+    layout::{Layout, Rect, SizeHint},
+};
 use termwiz::{
     caps::Capabilities,
     surface::Change,
@@ -49,8 +54,8 @@ fn main() -> Result<()> {
 
     let _layouts = [
         horizontal![
-            bordered![label!["Window 1!"].center() => Some(red_tui::SizeHint::Percentage(0.3))],
-            bordered![label!["Window 2!"].center() => Some(red_tui::SizeHint::Percentage(0.7))],
+            bordered![label!["Window 1!"].center() => Some(SizeHint::Percentage(0.3))],
+            bordered![label!["Window 2!"].center() => Some(SizeHint::Percentage(0.7))],
             => None
         ],
         vertical![
@@ -85,12 +90,12 @@ fn main() -> Result<()> {
         ],
     ];
 
-    let mut ui = Ui::new(
+    let mut ui = sanguine::Ui::new(
         horizontal![
-            bordered![label!["Window 1!"].center() => Some(red_tui::SizeHint::Percentage(0.4))],
+            bordered![label!["Window 1!"].center() => Some(SizeHint::Percentage(0.4))],
             vertical![
-                bordered![label!["Window 2!"].center() => Some(red_tui::SizeHint::Percentage(0.4))],
-                bordered![label!["Window 3!"].center() => Some(red_tui::SizeHint::Percentage(0.6))],
+                bordered![label!["Window 2!"].center() => Some(SizeHint::Percentage(0.4))],
+                bordered![label!["Window 3!"].center() => Some(SizeHint::Percentage(0.6))],
                 => None
             ],
             => None
@@ -99,7 +104,7 @@ fn main() -> Result<()> {
     )?;
 
     ui.init()?;
-    ui.add_float(red_tui::float::Float {
+    ui.add_float(sanguine::float::Float {
         contents: bordered![label!["Float 1"] => None],
         rect: Rect {
             x: 10.,
@@ -109,7 +114,7 @@ fn main() -> Result<()> {
         },
         z_index: 1,
     });
-    ui.add_float(red_tui::float::Float {
+    ui.add_float(sanguine::float::Float {
         contents: bordered![label!["Float 2"] => None],
         rect: Rect {
             x: 60.,
