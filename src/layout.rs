@@ -1,8 +1,4 @@
-use termwiz::{
-    input::InputEvent,
-    surface::Surface,
-    terminal::{buffered::BufferedTerminal, Terminal},
-};
+use termwiz::surface::Surface;
 
 use crate::widget::Widget;
 
@@ -159,8 +155,6 @@ impl Layout {
 impl Widget for Layout {
     fn render(&self, rect: &Rect, term: &mut Surface) {
         use LayoutAxis::*;
-
-        let nwidgets = self.widgets.len();
 
         let sizes = self
             .widgets

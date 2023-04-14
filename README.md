@@ -5,10 +5,10 @@ Create dynamic, performant TUI applications in Rust.
 Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 
 > **Note**<br>
-> Sanguine is not yet ready for use so it hasn't been published.<br>
+> Sanguine is not quite ready for use.<br>
 > You can run the `demo` example if you want to try it out.<br>
 
-## Features:
+## Goals:
 
 - [x] Floating windows
   - [ ] Render optimizations

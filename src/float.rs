@@ -52,11 +52,11 @@ impl FloatStack {
     }
 
     pub fn remove(&mut self, z_index: usize) {
-        self.floats.retain(|k, f| f.z_index != z_index);
+        self.floats.retain(|_, f| f.z_index != z_index);
     }
 
     pub fn render(&mut self, rect: &Rect, surface: &mut Surface) {
-        self.floats.iter_mut().for_each(|(k, f)| {
+        self.floats.iter_mut().for_each(|(_, f)| {
             let mut float = Surface::new(f.rect.width as usize, f.rect.height as usize);
             if f.rect.x + f.rect.width > rect.width {
                 f.rect.width = rect.width - f.rect.x;

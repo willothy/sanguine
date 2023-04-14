@@ -1,14 +1,9 @@
-use termwiz::{
-    input::InputEvent,
-    surface::{Change, Position, Surface},
-    terminal::{buffered::BufferedTerminal, Terminal},
-};
+use termwiz::surface::{Change, Position, Surface};
 
 use crate::{
     align::{Align, Alignment},
-    layout::Rect,
+    layout::{Rect, SizeHint},
     widget::Widget,
-    SizeHint,
 };
 
 #[derive(Debug, Clone)]
@@ -114,7 +109,7 @@ impl Widget for Label {
         }
     }
 
-    fn size_hint(&self, parent: &Rect) -> SizeHint {
+    fn size_hint(&self, _parent: &Rect) -> SizeHint {
         SizeHint::fill()
     }
 

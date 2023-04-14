@@ -1,25 +1,19 @@
 use float::{Float, FloatStack};
+use layout::Rect;
 use std::collections::VecDeque;
 use termwiz::{
-    input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseEvent},
+    input::{InputEvent, MouseEvent},
     surface::Change,
     terminal::{buffered::BufferedTerminal, Terminal},
 };
+use widget::Widget;
 
 pub mod align;
 pub mod border;
 pub mod float;
 pub mod label;
 pub mod layout;
-pub mod stack;
 pub mod widget;
-
-pub use align::*;
-pub use border::*;
-pub use label::*;
-pub use layout::*;
-pub use stack::*;
-pub use widget::*;
 
 pub use anyhow;
 use anyhow::Result;
@@ -63,7 +57,7 @@ impl<T: Terminal> Ui<T> {
         let count = self.floats.floats.len();
         if count == 0 {
             self.current_float = None;
-        } else if let Some((id, rect)) = &self.current_float {
+        } else if let Some((id, _rect)) = &self.current_float {
             if *id == count - 1 {
                 let first = self.floats.floats.first_key_value();
                 if let Some(f) = first {
@@ -105,114 +99,35 @@ impl<T: Terminal> Ui<T> {
         self.buffer.flush()?;
 
         match self.buffer.terminal().poll_input(None) {
-            Ok(Some(InputEvent::Resized { rows, cols })) => self.resize(rows, cols),
-            Ok(Some(input)) => match input {
-                InputEvent::Key(KeyEvent {
-                    key: KeyCode::Char(c),
-                    modifiers,
-                }) => {
-                    if c == 'q' && modifiers == Modifiers::CTRL {
-                        // Quit the app when q is pressed
-                        self.buffer
-                            .add_change(Change::ClearScreen(Default::default()));
-                        self.buffer.add_change(Change::CursorVisibility(
-                            termwiz::surface::CursorVisibility::Visible,
-                        ));
-                        self.buffer.flush()?;
-                        // break;
-                        return Ok(false);
-                    }
-                }
-                InputEvent::Key(KeyEvent {
-                    key: KeyCode::UpArrow,
-                    modifiers,
-                }) => {
-                    if let Some((id, rect)) = &mut self.current_float {
-                        if modifiers == Modifiers::SHIFT {
-                            rect.height -= 1.;
-                        } else {
-                            rect.y -= 1.;
-                        }
-                    }
-                }
-                InputEvent::Key(KeyEvent {
-                    key: KeyCode::DownArrow,
-                    modifiers,
-                }) => {
-                    if let Some((id, rect)) = &mut self.current_float {
-                        if modifiers == Modifiers::SHIFT {
-                            rect.height += 1.;
-                        } else {
-                            rect.y += 1.;
-                        }
-                    }
-                }
-                InputEvent::Key(KeyEvent {
-                    key: KeyCode::LeftArrow,
-                    modifiers,
-                }) => {
-                    if let Some((id, rect)) = &mut self.current_float {
-                        if modifiers == Modifiers::SHIFT {
-                            rect.width -= 1.;
-                        } else {
-                            rect.x -= 1.;
-                        }
-                    }
-                }
-                InputEvent::Key(KeyEvent {
-                    key: KeyCode::RightArrow,
-                    modifiers,
-                }) => {
-                    if let Some((id, rect)) = &mut self.current_float {
-                        if modifiers == Modifiers::SHIFT {
-                            rect.width += 1.;
-                        } else {
-                            rect.x += 1.;
-                        }
-                    }
-                }
-                InputEvent::Key(KeyEvent {
-                    key: KeyCode::Tab,
-                    modifiers,
-                }) => {
-                    if modifiers == Modifiers::SHIFT {
-                        // let t = cycle_float(main_float, floats.floats.len());
-                        // let rect = &floats.floats[&t].rect;
-                        // float_x = rect.x as usize;
-                        // float_y = rect.y as usize;
-                        // float_width = rect.width as usize;
-                        // float_height = rect.height as usize;
-                        // // floats.update_z_index(main_float, );
-                        // main_float = t;
-                        self.cycle_float();
-                    } else {
-                        // ui = cycle_layout();
-                    }
-                }
-                #[allow(unused_variables)]
-                InputEvent::Mouse(MouseEvent {
+            Ok(Some(InputEvent::Resized { rows, cols })) => {
+                self.queue.push_back(InputEvent::Resized { rows, cols });
+                self.resize(rows, cols)
+            }
+            Ok(Some(InputEvent::Mouse(MouseEvent {
+                x,
+                y,
+                mouse_buttons,
+                modifiers,
+            }))) => {
+                // Hacky fix for mouse events registering one row too low
+                let y = y - 1;
+                // TODO: Get widget under mouse
+                self.queue.push_back(InputEvent::Mouse(MouseEvent {
                     x,
                     y,
                     mouse_buttons,
                     modifiers,
-                }) => {
-                    // Hacky fix for mouse events registering one row too low
-                    let y = y - 1;
-                    // TODO: Feed input into the Ui
-                    // Get widget under mouse
-                    // Send input to widget
-                }
-                _input @ _ => {
-                    // TODO: Feed input into the Ui
-                    // Get focused widget
-                    // Send input to widget
-                }
-            },
+                }))
+            }
+            Ok(Some(input)) => {
+                // TODO: Feed input into the Ui
+                // Get focused widget
+                // Send input to widget
+                self.queue.push_back(input)
+            }
             Ok(None) => {}
             Err(e) => {
-                print!("{:?}\r\n", e);
-                // break;
-                // return Err(e);
+                return Err(anyhow::anyhow!("{}", e));
             }
         }
         Ok(true)

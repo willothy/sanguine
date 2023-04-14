@@ -1,10 +1,9 @@
-use termwiz::{
-    input::InputEvent,
-    surface::{Change, Position, Surface},
-    terminal::{buffered::BufferedTerminal, Terminal},
-};
+use termwiz::surface::{Change, Position, Surface};
 
-use crate::{layout::Rect, widget::Widget, SizeHint};
+use crate::{
+    layout::{Rect, SizeHint},
+    widget::Widget,
+};
 
 pub struct BorderChars {
     pub top_left: char,
@@ -134,7 +133,7 @@ impl Widget for Border {
         self.inner.render(&inner_rect, surface);
     }
 
-    fn size_hint(&self, _parent: &Rect) -> crate::SizeHint {
+    fn size_hint(&self, _parent: &Rect) -> SizeHint {
         self.size.clone().unwrap_or(SizeHint::fill())
     }
 }

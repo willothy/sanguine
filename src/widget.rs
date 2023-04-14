@@ -1,10 +1,6 @@
-use termwiz::{
-    input::InputEvent,
-    surface::Surface,
-    terminal::{buffered::BufferedTerminal, Terminal},
-};
+use termwiz::{input::InputEvent, surface::Surface};
 
-use crate::{layout::Rect, SizeHint};
+use crate::layout::{Rect, SizeHint};
 
 pub trait Widget {
     /// Render the widget onto the terminal, within the specified rectangle.
@@ -12,7 +8,7 @@ pub trait Widget {
 
     /// Constrain the widget, modifying the rectangle if necessary.
     /// Return the new rectangle, or None to apply no constraints.
-    fn constrain(&self, rect: &Rect, parent: &Rect) -> Option<Rect> {
+    fn constrain(&self, _rect: &Rect, _parent: &Rect) -> Option<Rect> {
         None
     }
 
@@ -20,7 +16,7 @@ pub trait Widget {
 
     /// Handle an input event.
     /// Return true if the event was handled, false to propagate to the event parent.
-    fn handle_event(&mut self, event: &InputEvent) -> bool {
+    fn handle_event(&mut self, _event: &InputEvent) -> bool {
         false
     }
 }
