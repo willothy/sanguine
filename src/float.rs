@@ -34,9 +34,9 @@ impl FloatStack {
         self.floats.get(&z_index).map(|f| f.rect.clone())
     }
 
-    pub fn update(&mut self, z_index: usize, rect: Rect) {
+    pub fn update(&mut self, z_index: usize, rect: &Rect) {
         if let Some(float) = self.floats.get_mut(&z_index) {
-            float.rect = rect;
+            float.rect = rect.clone();
         }
     }
 

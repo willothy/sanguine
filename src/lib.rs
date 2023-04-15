@@ -69,7 +69,8 @@ impl UiState {
 pub struct Sanguine<T: Terminal> {
     pub root: Box<dyn Widget>,
     pub buffer: BufferedTerminal<T>,
-    pub floats: FloatStack,
+    screen: termwiz::surface::Surface,
+    floats: FloatStack,
     pub queue: VecDeque<InputEvent>,
     pub rect: Rect,
     pub current_float: Option<(usize, Rect)>,
@@ -77,10 +78,12 @@ pub struct Sanguine<T: Terminal> {
 }
 
 impl<T: Terminal> Sanguine<T> {
-    pub fn new(root: Box<dyn Widget>, surface: BufferedTerminal<T>) -> Result<Self> {
+    pub fn new(root: Box<dyn Widget>, buffer: BufferedTerminal<T>) -> Result<Self> {
+        let dims = buffer.dimensions();
         Ok(Self {
             root,
-            buffer: surface,
+            buffer,
+            screen: termwiz::surface::Surface::new(dims.0, dims.1),
             floats: FloatStack::new(),
             queue: VecDeque::new(),
             rect: Rect::new(0., 0., 0., 0.),
@@ -145,26 +148,36 @@ impl<T: Terminal> Sanguine<T> {
     pub fn resize(&mut self, rows: usize, cols: usize) {
         self.buffer
             .add_change(Change::ClearScreen(Default::default()));
+        self.screen
+            .add_change(Change::ClearScreen(Default::default()));
         self.buffer.resize(cols, rows);
+        self.screen.resize(cols, rows);
         self.rect.resize(cols, rows);
         // TODO: update float positions to keep them on screen
     }
 
     pub fn render(&mut self) -> Result<bool> {
-        // TODO: Only clear old float locations, not whole screen
-        self.buffer
-            .add_change(Change::ClearScreen(Default::default()));
+        // Update float position (temp)
         if let Some(curr) = &self.current_float {
-            self.floats.update(curr.0, curr.1.clone());
+            self.floats.update(curr.0, &curr.1);
         }
-        self.root.render(&self.rect, &mut self.buffer);
+
+        // Render root layout onto background screen
+        self.root.render(&self.rect, &mut self.screen);
+
+        // Draw background screen into main buffer
+        self.buffer.draw_from_screen(&self.screen, 0, 0);
+
+        // Render floats on top of the main screen
         self.floats.render(&self.rect, &mut self.buffer);
+
+        // Compute diffs and flush buffer
         self.buffer.flush()?;
 
         match self.buffer.terminal().poll_input(None) {
             Ok(Some(InputEvent::Resized { rows, cols })) => {
+                self.resize(rows, cols);
                 self.queue.push_back(InputEvent::Resized { rows, cols });
-                self.resize(rows, cols)
             }
             Ok(Some(InputEvent::Mouse(MouseEvent {
                 x,
