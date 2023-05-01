@@ -13,4 +13,5 @@ categories = ["gui", "command-line-interface"]
 [dependencies]
 anyhow = "1.0.70"
 itertools = "0.10.5"
+slotmap = "1.0.6"
 termwiz = { version = "0.20.0", features = ["serde"] }

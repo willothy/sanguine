@@ -1,70 +1,161 @@
-use termwiz::{
-    caps::Capabilities,
-    surface::Change,
-    terminal::{buffered::BufferedTerminal, new_terminal, Terminal},
-    Result,
-};
+use std::{sync::Arc, time::Duration};
 
-use sanguine::{
-    align::Align,
-    bordered,
-    float::Float,
-    horizontal, label,
-    layout::{Rect, SizeHint},
-    vertical, Sanguine,
-};
+use anyhow::Result;
+use sanguine::{Direction, Layout, Leaf, Rect, Sanguine, SizeHint, Widget};
+use termwiz::surface::{Change, Position};
 
-fn main() -> Result<()> {
-    let caps = Capabilities::new_from_env()?;
-    let mut term = new_terminal(caps)?;
-    term.set_raw_mode()?;
+pub struct BorderChars {
+    pub top_left: char,
+    pub top_right: char,
+    pub bottom_left: char,
+    pub bottom_right: char,
+    pub horizontal: char,
+    pub vertical: char,
+}
 
-    let mut buf = BufferedTerminal::new(term)?;
-    // Hide the cursor before initializing
-    buf.add_change(Change::CursorVisibility(
-        termwiz::surface::CursorVisibility::Hidden,
-    ));
+pub enum BorderVariant {
+    Single,
+    Double,
+    Rounded,
+    Custom(BorderChars),
+    None,
+}
 
-    buf.flush()?;
+impl From<BorderVariant> for BorderChars {
+    fn from(border: BorderVariant) -> Self {
+        match border {
+            BorderVariant::Single => BorderChars {
+                top_left: '┌',
+                top_right: '┐',
+                bottom_left: '└',
+                bottom_right: '┘',
+                horizontal: '─',
+                vertical: '│',
+            },
+            BorderVariant::Double => BorderChars {
+                top_left: '╔',
+                top_right: '╗',
+                bottom_left: '╚',
+                bottom_right: '╝',
+                horizontal: '═',
+                vertical: '║',
+            },
+            BorderVariant::Rounded => BorderChars {
+                top_left: '╭',
+                top_right: '╮',
+                bottom_left: '╰',
+                bottom_right: '╯',
+                horizontal: '─',
+                vertical: '│',
+            },
+            BorderVariant::Custom(chars) => chars,
+            BorderVariant::None => BorderChars {
+                top_left: ' ',
+                top_right: ' ',
+                bottom_left: ' ',
+                bottom_right: ' ',
+                horizontal: ' ',
+                vertical: ' ',
+            },
+        }
+    }
+}
 
-    let mut ui = Sanguine::new(
-        horizontal![
-            // Bordered window, 40% of parent size
-            bordered![label!["Window 1!"].center() => Some(SizeHint::Percentage(0.4))],
-            vertical![
-                bordered![label!["Window 2!"].center() => Some(SizeHint::Percentage(0.4))],
-                bordered![label!["Window 3!"].center() => Some(SizeHint::Percentage(0.6))],
-                // No sizing defaults to Fill, making this automatically take 60% of parent size
-                => None
-            ],
-            // No sizing for the root element, it will fill the full screen
-            => None
-        ],
-        buf,
-    )?;
+struct Border {
+    chars: BorderChars,
+}
 
-    ui.add_float(Float {
-        contents: bordered![label!["Float 1"] => None],
-        rect: Rect {
-            x: 10.,
-            y: 10.,
-            width: 15.,
-            height: 10.,
-        },
-        z_index: 1,
-    });
-    ui.add_float(Float {
-        contents: bordered![label!["Float 2"] => None],
-        rect: Rect {
-            x: 60.,
-            y: 20.,
-            width: 20.,
-            height: 10.,
-        },
-        z_index: 0,
-    });
+impl Border {
+    pub fn new() -> Self {
+        Self {
+            chars: BorderVariant::Rounded.into(),
+        }
+    }
 
-    ui.exec()?;
+    #[allow(unused)]
+    pub fn with_variant(variant: BorderVariant) -> Self {
+        Self {
+            chars: variant.into(),
+        }
+    }
+}
+
+impl Widget for Border {
+    fn render(&self, rect: Rect, surface: &mut termwiz::surface::Surface) {
+        let mut changes = vec![];
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute(rect.x.floor() as usize),
+            y: Position::Absolute(rect.y.floor() as usize),
+        });
+        changes.push(Change::Text(self.chars.top_left.to_string()));
+        for _ in 0..(rect.width - 1.0) as usize {
+            changes.push(Change::Text(self.chars.horizontal.to_string()));
+        }
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
+            y: Position::Relative(0),
+        });
+        changes.push(Change::Text(self.chars.top_right.to_string()));
+        for _ in 0..(rect.height - 1.0) as usize {
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(rect.x.floor() as usize),
+                y: Position::Relative(1),
+            });
+            changes.push(Change::Text(self.chars.vertical.to_string()));
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
+                y: Position::Relative(0),
+            });
+            changes.push(Change::Text(self.chars.vertical.to_string()));
+        }
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute(rect.x.floor() as usize),
+            y: Position::Absolute((rect.y + rect.height - 1.0).floor() as usize),
+        });
+        changes.push(Change::Text(self.chars.bottom_left.to_string()));
+        for _ in 0..(rect.width - 1.0) as usize {
+            changes.push(Change::Text(self.chars.horizontal.to_string()));
+        }
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
+            y: Position::Relative(0),
+        });
+        changes.push(Change::Text(self.chars.bottom_right.to_string()));
+        surface.add_changes(changes);
+    }
+}
+
+pub fn main() -> Result<()> {
+    let mut layout = Layout::new();
+
+    let left = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    // let right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let top_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let bot_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let right = layout.add_with_children(
+        Direction::Vertical,
+        Some(SizeHint::fill()),
+        [top_right, bot_right],
+    );
+
+    let root = layout.root();
+    layout.set_direction(root, Direction::Horizontal);
+
+    layout.add_child(root, left);
+    layout.add_child(root, right);
+
+    // let bounds = {
+    //     let (w, h) = term.dimensions();
+    //     Rect::new(0., 0., w as f32, h as f32)
+    // };
+    // println!("bounds: {:?}", bounds);
+    // layout.compute(&bounds);
+    //
+    // layout.print_recursive(root);
+
+    let mut s = Sanguine::new(layout)?;
+    s.render()?;
+    std::thread::sleep(Duration::from_secs(3));
 
     Ok(())
 }
