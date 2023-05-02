@@ -129,14 +129,14 @@ pub fn main() -> Result<()> {
     let mut layout = Layout::new();
 
     let left = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    let right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    // let top_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    // let bot_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    // let right = layout.add_with_children(
-    //     Direction::Vertical,
-    //     Some(SizeHint::fill()),
-    //     [top_right, bot_right],
-    // );
+    // let right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let top_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let bot_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let right = layout.add_with_children(
+        Direction::Vertical,
+        Some(sanguine::SizeHint::fill()),
+        [top_right, bot_right],
+    );
 
     let root = layout.root();
     layout.set_direction(root, Direction::Horizontal);
@@ -154,13 +154,13 @@ pub fn main() -> Result<()> {
     // layout.print_recursive(root);
 
     let mut s = Sanguine::new(layout)?;
-    s.render()?;
-    std::thread::sleep(Duration::from_secs(3));
+    // s.render()?;
+    // std::thread::sleep(Duration::from_secs(3));
     s.update_layout(|l| {
         // todo
         l.split(
-            right,
-            Direction::Vertical,
+            left,
+            Direction::Horizontal,
             Leaf::new(Arc::new(Border::new())),
         );
     });

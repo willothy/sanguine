@@ -193,13 +193,11 @@ impl Layout {
                     };
                     let (x, y) = (
                         if axis == Direction::Horizontal {
-                            // rect.x + width * i as f64
                             current
                         } else {
                             bounds.x
                         },
                         if axis == Direction::Vertical {
-                            // rect.y + height * i as f64
                             current
                         } else {
                             bounds.y
@@ -234,8 +232,6 @@ impl Layout {
             .iter()
             .filter_map(|(k, size)| match size {
                 SizeHint::Fixed(size) => {
-                    // new_sizes.insert(i, SizeHint::Fixed(*size));
-                    // new_sizes[&i] = (*k, SizeHint::Fixed(*size));
                     new_sizes.insert(*k, SizeHint::Fixed(*size));
                     Some(size)
                 }
@@ -265,8 +261,6 @@ impl Layout {
             *f *= remaining as f32;
             let size = f.floor() as usize;
             pct_total += size;
-            // new_sizes.insert(*i, SizeHint::Fixed(size));
-            // new_sizes[*i] = (**k, SizeHint::Fixed(size));
             new_sizes.insert(**k, SizeHint::Fixed(size));
         });
         remaining -= pct_total as f32;
@@ -283,11 +277,26 @@ impl Layout {
         let nfill = fill.len();
 
         let fill_size = remaining / nfill as f32;
-        fill.iter().for_each(|(k, _)| {
-            // new_sizes.insert(*i, SizeHint::Fixed(fill_size.floor() as usize));
-            // new_sizes[*i] = (**k, SizeHint::Fixed(fill_size.ceil() as usize));
-            new_sizes.insert(**k, SizeHint::Fixed(fill_size.ceil() as usize));
-        });
+        let diff = remaining - (fill_size * nfill as f32);
+        fill.iter()
+            .map(|(k, _)| {
+                if diff > 0. {
+                    (k, fill_size.floor())
+                } else if diff < 0. {
+                    (k, fill_size.ceil())
+                } else {
+                    (
+                        k,
+                        match &axis {
+                            Direction::Horizontal => fill_size.floor(),
+                            Direction::Vertical => fill_size.ceil(),
+                        },
+                    )
+                }
+            })
+            .for_each(|(k, v)| {
+                new_sizes.insert(**k, SizeHint::Fixed(v/* fill_size.floor() */ as usize));
+            });
         new_sizes
     }
 
@@ -553,17 +562,6 @@ impl Layout {
     }
 }
 
-impl From<(usize, usize)> for Rect {
-    fn from((w, h): (usize, usize)) -> Self {
-        Rect {
-            x: 0.,
-            y: 0.,
-            width: w as f32,
-            height: h as f32 - 1.,
-        }
-    }
-}
-
 pub enum Event {
     Input(InputEvent),
     User(String),
@@ -583,7 +581,15 @@ impl Sanguine {
         let term = BufferedTerminal::new(UnixTerminal::new(caps)?)?;
         Ok(Sanguine {
             event_queue: VecDeque::new(),
-            size: term.dimensions().into(),
+            size: {
+                let t = term.dimensions();
+                Rect {
+                    x: 0.,
+                    y: 0.,
+                    width: t.0 as f32,
+                    height: t.1 as f32,
+                }
+            },
             layout,
             term,
         })
