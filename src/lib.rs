@@ -8,7 +8,7 @@ use slotmap::DefaultKey;
 use termwiz::{
     caps::Capabilities,
     input::InputEvent,
-    surface::Surface,
+    surface::{Change, Surface},
     terminal::{buffered::BufferedTerminal, UnixTerminal},
 };
 
@@ -80,11 +80,15 @@ pub trait Widget {
 
 pub struct Leaf {
     widget: Arc<dyn Widget>,
+    parent: Option<NodeId>,
 }
 
 impl Leaf {
     pub fn new(widget: Arc<dyn Widget>) -> Self {
-        Self { widget }
+        Self {
+            widget,
+            parent: None,
+        }
     }
 }
 
@@ -106,6 +110,7 @@ pub struct Container {
     direction: Direction,
     size: Option<SizeHint>,
     children: Vec<NodeId>,
+    parent: Option<NodeId>,
 }
 
 pub enum LayoutNode {
@@ -130,6 +135,7 @@ impl Layout {
             direction: Direction::Vertical,
             size: None,
             children: vec![],
+            parent: None,
         }));
         Self {
             nodes,
@@ -356,6 +362,7 @@ impl Layout {
             children: vec![],
             direction,
             size,
+            parent: None,
         };
         let node = LayoutNode::Container(container);
         let id = self.nodes.insert(node);
@@ -388,12 +395,28 @@ impl Layout {
         size: Option<SizeHint>,
         children: impl Into<Vec<NodeId>>,
     ) -> NodeId {
+        let c = children.into();
         let container = Container {
-            children: children.into(),
+            children: c.clone(),
             direction,
             size,
+            parent: None,
         };
         let node = LayoutNode::Container(container);
+        c.iter().for_each(|v| {
+            // if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(*v) {
+            //     container.parent = Some(container.parent.unwrap_or(self.root));
+            // }
+            match self.nodes.get_mut(*v) {
+                Some(LayoutNode::Container(container)) => {
+                    container.parent = Some(container.parent.unwrap_or(self.root));
+                }
+                Some(LayoutNode::Leaf(leaf)) => {
+                    leaf.parent = Some(leaf.parent.unwrap_or(self.root));
+                }
+                _ => {}
+            }
+        });
         let id = self.nodes.insert(node);
         self.layout.insert(id, Rect::default());
         id
@@ -415,6 +438,7 @@ impl Layout {
             }
             _ => panic!("Parent is not a container"),
         }
+        self.set_parent(child, Some(parent));
     }
 
     /// Removes a child from the given container. This does not drop the node.
@@ -445,17 +469,34 @@ impl Layout {
         }
     }
 
-    pub fn replace_child(&mut self, parent: NodeId, index: usize, child: NodeId) {
+    pub fn replace_child(&mut self, parent: NodeId, child: NodeId, new: NodeId) {
+        let old;
         match self.nodes.get_mut(parent) {
             Some(LayoutNode::Container(container)) => {
-                container.children[index] = child;
+                let index = container.children.iter().position(|&x| x == child).unwrap();
+                old = Some(container.children[index]);
+
+                container.children[index] = new;
             }
             _ => panic!("Parent is not a container"),
         }
+        if let Some(old) = old {
+            self.set_parent(old, None);
+        }
+        self.set_parent(new, Some(parent));
     }
 
     pub fn node(&self, node: NodeId) -> Option<&LayoutNode> {
         self.nodes.get(node)
+    }
+
+    fn set_parent(&mut self, node: NodeId, parent: Option<NodeId>) {
+        match self.nodes.get_mut(node) {
+            Some(LayoutNode::Container(container)) => {
+                container.parent = parent;
+            }
+            _ => {}
+        }
     }
 
     pub fn is_leaf(&self, node: NodeId) -> bool {
@@ -492,6 +533,24 @@ impl Layout {
             _ => None,
         }
     }
+
+    pub fn parent(&self, node: NodeId) -> Option<NodeId> {
+        match self.nodes.get(node) {
+            Some(LayoutNode::Container(container)) => Some(container.parent.unwrap_or(self.root())),
+            Some(LayoutNode::Leaf(leaf)) => Some(leaf.parent.unwrap_or(self.root())),
+            _ => Some(self.root),
+        }
+    }
+
+    pub fn split(&mut self, node: NodeId, direction: Direction, leaf: Leaf) {
+        if self.is_leaf(node) {
+            let new = self.add_container(direction, None);
+            let new_leaf = self.add_leaf(leaf);
+            self.replace_child(self.parent(node).unwrap(), node, new);
+            self.add_child(new, node);
+            self.add_child(new, new_leaf);
+        }
+    }
 }
 
 impl From<(usize, usize)> for Rect {
@@ -500,7 +559,7 @@ impl From<(usize, usize)> for Rect {
             x: 0.,
             y: 0.,
             width: w as f32,
-            height: h as f32,
+            height: h as f32 - 1.,
         }
     }
 }
@@ -535,6 +594,8 @@ impl Sanguine {
     }
 
     pub fn render(&mut self) -> Result<()> {
+        self.term
+            .add_change(Change::ClearScreen(termwiz::color::ColorAttribute::Default));
         self.layout.compute(&self.size);
 
         self.layout.leaves().iter().for_each(|id| {
