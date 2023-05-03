@@ -63,8 +63,12 @@ impl Sanguine {
         })
     }
 
-    pub fn update_layout(&mut self, f: impl FnOnce(&mut Layout)) {
-        f(&mut self.layout);
+    pub fn update_layout<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut Layout) -> R,
+        R: Sized,
+    {
+        f(&mut self.layout)
     }
 
     pub fn render(&mut self) -> Result<()> {
@@ -73,13 +77,16 @@ impl Sanguine {
         // Create temporary background screen
         let mut screen = Surface::new(self.size.width as usize, self.size.height as usize);
 
+        // Retrieve leaves (windows) from layout
         let leaves = self.layout.leaves();
 
         leaves.iter().for_each(|id| {
+            // Retrieve computed layout for window
             let layout = self.layout.layout(*id).unwrap();
-            let leaf = self.layout.widget(*id).unwrap();
+            // Retrieve widget trait object from node
+            let widget = self.layout.widget(*id).unwrap();
             // Draw onto temporary background screen
-            leaf.render(&self.layout, layout.clone(), &mut screen);
+            widget.render(&self.layout, layout.clone(), &mut screen);
         });
 
         // Draw contents of background screen to terminal

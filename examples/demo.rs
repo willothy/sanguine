@@ -1,12 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use anyhow::Result;
 use sanguine::prelude::{Axis, Layout, Leaf, Rect, Sanguine, SizeHint, Widget};
-use termwiz::{
-    caps::Capabilities,
-    surface::{Change, Position},
-    terminal::{buffered::BufferedTerminal, UnixTerminal},
-};
+use termwiz::surface::{Change, Position};
 
 pub struct BorderChars {
     pub top_left: char,
@@ -97,7 +93,7 @@ fn get_border_chars(child: &Rect, parent: &Rect) -> BorderChars {
 }
 
 impl Widget for Border {
-    fn render(&self, layout: &Layout, rect: Rect, surface: &mut termwiz::surface::Surface) {
+    fn render(&self, _layout: &Layout, rect: Rect, surface: &mut termwiz::surface::Surface) {
         let size = surface.dimensions();
 
         let corners = get_border_chars(
@@ -201,26 +197,19 @@ pub fn main() -> Result<()> {
     let mut buf = String::new();
     let mut s = Sanguine::new(layout)?;
     s.render()?;
-    // std::io::stdin().read_line(&mut buf)?;
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    let mut new = None;
-    s.update_layout(|l| {
-        // todo
-        new = l.split(left, Axis::Horizontal, Leaf::new(Arc::new(Border::new())));
-    });
+    let new =
+        s.update_layout(|l| l.split(left, Axis::Horizontal, Leaf::new(Arc::new(Border::new()))));
     s.render()?;
-    // std::io::stdin().read_line(&mut buf)?;
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    let mut new2 = None;
-    s.update_layout(|l| {
-        // todo
-        new2 = l.split(
+    let _new2 = s.update_layout(|l| {
+        l.split(
             new.unwrap(),
             Axis::Vertical,
             Leaf::new(Arc::new(Border::new())),
-        );
+        )
     });
     s.render()?;
     std::io::stdin().read_line(&mut buf)?;
