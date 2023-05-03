@@ -65,6 +65,14 @@ impl Default for Rect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Axis {
     Horizontal,
     Vertical,

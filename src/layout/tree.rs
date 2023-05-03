@@ -2,9 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use slotmap::DefaultKey;
 
+use super::geometry::{Axis, Direction, Rect, SizeHint};
 use crate::widget::Widget;
-
-use super::geometry::{Axis, Rect, SizeHint};
 
 pub type NodeId = DefaultKey;
 
@@ -43,17 +42,12 @@ pub struct Layout {
     layout: HashMap<NodeId, Rect>,
     /// The root node of the layout.
     root: NodeId,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Direction {
-    Left,
-    Right,
-    Up,
-    Down,
+    /// Whether the layout should be recomputed
+    dirty: bool,
 }
 
 impl Layout {
+    /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
         let mut nodes = slotmap::SlotMap::new();
         let root = nodes.insert(LayoutNode::Container(Container {
@@ -66,39 +60,12 @@ impl Layout {
             nodes,
             root,
             layout: HashMap::from([(root, Rect::default())]),
+            // True so that the first call to `compute` will always recompute the layout
+            dirty: true,
         }
     }
 
-    pub fn adjacent_in_parent(
-        &self,
-        node: NodeId,
-        result: &mut HashMap<NodeId, Direction>,
-    ) -> Option<NodeId> {
-        let parent = self.parent(node)?;
-        let direction = self.direction(parent)?;
-        let children = self.children(parent)?;
-        let index = children.iter().position(|id| *id == node)?;
-        if index > 0 {
-            result.insert(
-                children[index - 1],
-                match direction {
-                    Axis::Vertical => Direction::Up,
-                    Axis::Horizontal => Direction::Left,
-                },
-            );
-        }
-        if index < children.len() - 1 {
-            result.insert(
-                children[index + 1],
-                match direction {
-                    Axis::Vertical => Direction::Down,
-                    Axis::Horizontal => Direction::Right,
-                },
-            );
-        }
-        Some(parent)
-    }
-
+    /// Returns nodes adjacent to the given node, along with the direction to get to them
     pub fn adjacent(&self, node: NodeId) -> HashMap<NodeId, Direction> {
         let mut map = HashMap::new();
         let parent = self.parent(node).unwrap();
@@ -175,11 +142,7 @@ impl Layout {
         map
     }
 
-    pub fn compute(&mut self, bounds: &Rect) {
-        self.layout.clear();
-        self.compute_tree(None, bounds);
-    }
-
+    /// Returns nodes that are adjacent to the given node on the given side.
     pub fn adjacent_on_side(&self, node: NodeId, side: Direction) -> Vec<NodeId> {
         self.adjacent(node)
             .into_iter()
@@ -188,6 +151,7 @@ impl Layout {
             .collect()
     }
 
+    /// Returns x/y value of intersections between node and other nodes on the given side.
     pub fn side_intersections(&self, node: NodeId, side: Direction) -> Vec<f32> {
         let mut intersections = vec![];
         let Some(bounds) = self.layout(node) else {
@@ -227,7 +191,26 @@ impl Layout {
         intersections
     }
 
-    pub fn compute_tree(&mut self, node: Option<NodeId>, bounds: &Rect) {
+    /// Clears the layout and **drops** all nodes that are not part of the tree.
+    pub fn clean(&mut self) {
+        self.dirty = true;
+        self.layout.clear();
+        self.nodes.retain(|_, v| match v {
+            LayoutNode::Container(c) => c.parent.is_some(),
+            LayoutNode::Leaf(l) => l.parent.is_some(),
+        });
+    }
+
+    /// Computes the layout of the tree for the given bounds. This must be called after each change to the tree.
+    pub fn compute(&mut self, bounds: &Rect) {
+        if self.dirty {
+            self.compute_tree(None, bounds);
+            self.dirty = false;
+        }
+    }
+
+    /// Recursively computes the layout of the tree.
+    fn compute_tree(&mut self, node: Option<NodeId>, bounds: &Rect) {
         let node = node.unwrap_or(self.root());
         self.compute_node(node, bounds);
         if self.is_leaf(node) {
@@ -241,8 +224,8 @@ impl Layout {
         }
     }
 
-    /// Computes the layout of the tree. This must be called after each change to the tree.
-    pub fn compute_node(&mut self, node: NodeId, bounds: &Rect) {
+    /// Computes layout for an individual node
+    fn compute_node(&mut self, node: NodeId, bounds: &Rect) {
         self.layout.insert(node, bounds.clone());
         if self.is_leaf(node) {
             return;
@@ -451,6 +434,7 @@ impl Layout {
     /// Drops a node from the layout. This will not drop children of the node.
     /// Use of the provided NodeId after calling this is invalid.
     pub fn remove_node(&mut self, node: NodeId) {
+        self.dirty = true;
         self.nodes.remove(node);
         self.layout.remove(&node);
     }
@@ -470,6 +454,7 @@ impl Layout {
     }
 
     pub fn set_size(&mut self, node: NodeId, size: SizeHint) {
+        self.dirty = true;
         match self.nodes.get_mut(node) {
             Some(LayoutNode::Container(container)) => {
                 container.size = Some(size);
@@ -479,6 +464,7 @@ impl Layout {
     }
 
     pub fn set_direction(&mut self, node: NodeId, axis: Axis) {
+        self.dirty = true;
         match self.nodes.get_mut(node) {
             Some(LayoutNode::Container(container)) => {
                 container.direction = axis;
@@ -494,6 +480,7 @@ impl Layout {
         size: Option<SizeHint>,
         children: impl Into<Vec<NodeId>>,
     ) -> NodeId {
+        self.dirty = true;
         let c = children.into();
         let container = Container {
             children: c.clone(),
@@ -523,6 +510,7 @@ impl Layout {
 
     /// Adds a new leaf node to the layout.
     pub fn add_leaf(&mut self, leaf: Leaf) -> NodeId {
+        self.dirty = true;
         let node = LayoutNode::Leaf(leaf);
         let id = self.nodes.insert(node);
         self.layout.insert(id, Rect::default());
@@ -531,6 +519,7 @@ impl Layout {
 
     /// Adds a new leaf node to the given container.
     pub fn add_child(&mut self, parent: NodeId, child: NodeId) {
+        self.dirty = true;
         match self.nodes.get_mut(parent) {
             Some(LayoutNode::Container(container)) => {
                 container.children.push(child);
@@ -542,6 +531,7 @@ impl Layout {
 
     /// Removes a child from the given container. This does not drop the node.
     pub fn remove_child(&mut self, parent: NodeId, child: NodeId) {
+        self.dirty = true;
         match self.nodes.get_mut(parent) {
             Some(LayoutNode::Container(container)) => {
                 container.children.retain(|&x| x != child);
@@ -560,6 +550,7 @@ impl Layout {
     }
 
     pub fn remove_child_by_index(&mut self, parent: NodeId, index: usize) {
+        self.dirty = true;
         match self.nodes.get_mut(parent) {
             Some(LayoutNode::Container(container)) => {
                 container.children.remove(index);
@@ -569,6 +560,7 @@ impl Layout {
     }
 
     pub fn replace_child(&mut self, parent: NodeId, child: NodeId, new: NodeId) {
+        self.dirty = true;
         let old;
         match self.nodes.get_mut(parent) {
             Some(LayoutNode::Container(container)) => {
@@ -590,6 +582,7 @@ impl Layout {
     }
 
     fn set_parent(&mut self, node: NodeId, parent: Option<NodeId>) {
+        self.dirty = true;
         match self.nodes.get_mut(node) {
             Some(LayoutNode::Container(container)) => {
                 container.parent = parent;
@@ -645,6 +638,7 @@ impl Layout {
     }
 
     pub fn insert_child_at(&mut self, parent: NodeId, child: NodeId, index: usize) {
+        self.dirty = true;
         match self.nodes.get_mut(parent) {
             Some(LayoutNode::Container(container)) => {
                 container.children.insert(index, child);
@@ -655,6 +649,7 @@ impl Layout {
     }
 
     pub fn split(&mut self, node: NodeId, direction: Axis, leaf: Leaf) -> Option<NodeId> {
+        self.dirty = true;
         if self.is_leaf(node) {
             let new = self.add_container(direction, None);
             let new_leaf = self.add_leaf(leaf);

@@ -198,34 +198,32 @@ pub fn main() -> Result<()> {
     layout.add_child(root, left);
     layout.add_child(root, right);
 
+    let mut buf = String::new();
     let mut s = Sanguine::new(layout)?;
     s.render()?;
+    // std::io::stdin().read_line(&mut buf)?;
+    std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    // std::thread::sleep(Duration::from_secs(3));
-    // let mut new = None;
-    // s.update_layout(|l| {
-    //     // todo
-    //     new = l.split(left, Axis::Horizontal, Leaf::new(Arc::new(Border::new())));
-    // });
-    // let adj = s.layout.adjacent(top_right);
-    // println!("adj topright: {:?}", adj);
-    // let adj = s.layout.adjacent(left);
-    // println!("adj left: {:?}", adj);
-    // s.render()?;
-    // std::thread::sleep(Duration::from_secs(3));
-    // let mut new2 = None;
-    // s.update_layout(|l| {
-    //     // todo
-    //     new2 = l.split(
-    //         new.unwrap(),
-    //         Axis::Vertical,
-    //         Leaf::new(Arc::new(Border::new())),
-    //     );
-    // });
-    // s.render()?;
+    let mut new = None;
+    s.update_layout(|l| {
+        // todo
+        new = l.split(left, Axis::Horizontal, Leaf::new(Arc::new(Border::new())));
+    });
+    s.render()?;
+    // std::io::stdin().read_line(&mut buf)?;
+    std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    // std::thread::sleep(Duration::from_secs(30));
+    let mut new2 = None;
+    s.update_layout(|l| {
+        // todo
+        new2 = l.split(
+            new.unwrap(),
+            Axis::Vertical,
+            Leaf::new(Arc::new(Border::new())),
+        );
+    });
+    s.render()?;
+    std::io::stdin().read_line(&mut buf)?;
 
-    std::io::stdin().read_line(&mut String::new())?;
     Ok(())
 }
