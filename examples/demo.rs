@@ -17,7 +17,19 @@ pub struct BorderChars {
 }
 
 struct Border;
+impl Border {
+    #[allow(unused)]
+    fn new() -> Self {
+        Self
+    }
+}
 struct IndBorder;
+impl IndBorder {
+    #[allow(unused)]
+    fn new() -> Self {
+        Self
+    }
+}
 
 const TEE_LEFT: char = '┤';
 const TEE_RIGHT: char = '├';
@@ -201,13 +213,15 @@ impl Widget for IndBorder {
     }
 }
 
+type B = IndBorder;
+
 pub fn main() -> Result<()> {
     let mut layout = Layout::new();
 
-    let left = layout.add_leaf(Leaf::new(Arc::new(IndBorder)));
-    // let right = layout.add_leaf(Leaf::new(Arc::new(Border)));
-    let top_right = layout.add_leaf(Leaf::new(Arc::new(IndBorder)));
-    let bot_right = layout.add_leaf(Leaf::new(Arc::new(IndBorder)));
+    let left = layout.add_leaf(Leaf::new(Arc::new(B::new())));
+    // let right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
+    let top_right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
+    let bot_right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
     let right = layout.add_with_children(
         Axis::Vertical,
         Some(SizeHint::fill()),
@@ -232,7 +246,7 @@ pub fn main() -> Result<()> {
         let mut rng = rand::thread_rng();
         let idx = between.sample_single(&mut rng);
         let vertical = (0..2).sample_single(&mut rng) % 2 == 0;
-        let _new3 = s.update_layout(|l| {
+        s.update_layout(|l| {
             l.split(
                 leaves[idx],
                 if vertical {
@@ -240,7 +254,7 @@ pub fn main() -> Result<()> {
                 } else {
                     Axis::Horizontal
                 },
-                Leaf::new(Arc::new(IndBorder)),
+                Leaf::new(Arc::new(B::new())),
             )
         });
         s.render()?;
