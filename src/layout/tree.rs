@@ -338,21 +338,18 @@ impl Layout {
 
         let nfill = fill.len();
 
-        let fill_size = remaining / nfill as f32;
-        let mut diff = remaining - (fill_size * nfill as f32);
+        let fill_size = (remaining.floor() as usize / nfill) as f32;
+        let mut diff = remaining.floor() as usize % nfill;
         fill.iter()
             .map(|(k, _)| {
-                if diff > 0. {
-                    diff = (diff - 1.).max(0.);
-                    (k, fill_size.floor() - 1.)
-                } else if diff < 0. {
-                    diff = (diff + 1.).min(0.);
+                if diff > 0 {
+                    diff -= 1;
                     (k, fill_size.floor() + 1.)
                 } else {
                     (
                         k,
                         match &axis {
-                            Axis::Horizontal => fill_size.floor(), /* .floor() */
+                            Axis::Horizontal => fill_size, /* .floor() */
                             Axis::Vertical => fill_size.ceil(),
                         },
                     )
