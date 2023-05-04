@@ -204,13 +204,19 @@ pub fn main() -> Result<()> {
     s.render()?;
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    let _new2 = s.update_layout(|l| {
+    let new2 = s.update_layout(|l| {
         l.split(
             new.unwrap(),
             Axis::Vertical,
             Leaf::new(Arc::new(Border::new())),
         )
     });
+    s.render()?;
+    std::thread::sleep(std::time::Duration::from_millis(1000));
+
+    let parent = s.layout.parent(new2.unwrap()).unwrap();
+    let _new3 =
+        s.update_layout(|l| l.split(parent, Axis::Vertical, Leaf::new(Arc::new(Border::new()))));
     s.render()?;
     std::io::stdin().read_line(&mut buf)?;
 

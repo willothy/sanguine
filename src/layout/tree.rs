@@ -321,7 +321,7 @@ impl Layout {
         let mut pct_total = 0;
         percents.iter_mut().for_each(|(k, f)| {
             *f *= remaining as f32;
-            let size = f.floor() as usize;
+            let size = f.round() as usize;
             pct_total += size;
             new_sizes.push((**k, SizeHint::Fixed(size)));
         });
@@ -353,7 +353,7 @@ impl Layout {
                         k,
                         match &axis {
                             Axis::Horizontal => fill_size, /* .floor() */
-                            Axis::Vertical => fill_size,   /* .ceil() */
+                            Axis::Vertical => fill_size.ceil(),
                         },
                     )
                 }
@@ -361,6 +361,7 @@ impl Layout {
             .for_each(|(k, v)| {
                 new_sizes.push((**k, SizeHint::Fixed(v/* fill_size.floor() */ as usize)));
             });
+
         new_sizes
     }
 
@@ -660,7 +661,22 @@ impl Layout {
             self.add_child(new, new_leaf);
             self.insert_child_at(parent, new, index);
             return Some(new_leaf);
+        } else {
+            let self_dir = self.direction(node).unwrap();
+            let new_leaf = self.add_leaf(leaf);
+            if self_dir == direction {
+                self.add_child(node, new_leaf)
+            } else {
+                let new = self.add_container(direction, None);
+                let parent = self.parent(node).unwrap();
+                let index = self.child_index(parent, node).unwrap();
+                self.remove_child_by_index(parent, index);
+                self.add_child(new, node);
+                self.add_child(new, new_leaf);
+                self.insert_child_at(parent, new, index);
+                return Some(node);
+            }
+            None
         }
-        None
     }
 }
