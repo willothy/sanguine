@@ -646,7 +646,7 @@ impl Layout {
         self.set_parent(child, Some(parent));
     }
 
-    pub fn split(&mut self, node: NodeId, direction: Axis, leaf: Leaf) -> Option<NodeId> {
+    pub fn split(&mut self, node: NodeId, direction: Axis, leaf: Leaf) -> NodeId {
         self.dirty = true;
         if self.is_leaf(node) {
             let new = self.add_container(direction, None);
@@ -657,12 +657,13 @@ impl Layout {
             self.add_child(new, node);
             self.add_child(new, new_leaf);
             self.insert_child_at(parent, new, index);
-            return Some(new_leaf);
+            new_leaf
         } else {
             let self_dir = self.direction(node).unwrap();
             let new_leaf = self.add_leaf(leaf);
             if self_dir == direction {
-                self.add_child(node, new_leaf)
+                self.add_child(node, new_leaf);
+                new_leaf
             } else {
                 let new = self.add_container(direction, None);
                 let parent = self.parent(node).unwrap();
@@ -671,9 +672,8 @@ impl Layout {
                 self.add_child(new, node);
                 self.add_child(new, new_leaf);
                 self.insert_child_at(parent, new, index);
-                return Some(node);
+                node
             }
-            None
         }
     }
 }
