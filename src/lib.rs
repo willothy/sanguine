@@ -25,7 +25,7 @@ pub enum Event {
 }
 
 pub struct Sanguine {
-    pub layout: Layout,
+    layout: Layout,
     #[allow(unused)]
     event_queue: VecDeque<Event>,
     term: BufferedTerminal<UnixTerminal>,
@@ -69,6 +69,14 @@ impl Sanguine {
         R: Sized,
     {
         f(&mut self.layout)
+    }
+
+    pub fn inspect_layout<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&Layout) -> R,
+        R: Sized,
+    {
+        f(&self.layout)
     }
 
     pub fn render(&mut self) -> Result<()> {

@@ -352,7 +352,7 @@ impl Layout {
                     (
                         k,
                         match &axis {
-                            Axis::Horizontal => fill_size, /* .floor() */
+                            Axis::Horizontal => fill_size.floor(), /* .floor() */
                             Axis::Vertical => fill_size.ceil(),
                         },
                     )

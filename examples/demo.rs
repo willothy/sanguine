@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use rand::distributions::uniform::SampleRange;
 use sanguine::prelude::{Axis, Layout, Leaf, Rect, Sanguine, SizeHint, Widget};
 use termwiz::surface::{Change, Position};
 
@@ -16,12 +17,8 @@ pub struct BorderChars {
 }
 
 struct Border;
+struct IndBorder;
 
-impl Border {
-    pub fn new() -> Self {
-        Self
-    }
-}
 const TEE_LEFT: char = '┤';
 const TEE_RIGHT: char = '├';
 const TEE_BOTTOM: char = '┬';
@@ -111,14 +108,6 @@ impl Widget for Border {
             x: Position::Absolute(rect.x.floor() as usize),
             y: Position::Absolute(rect.y.floor() as usize),
         });
-        // if is_left && is_top {
-        //     changes.push(Change::Text(self.chars.top_left.to_string()));
-        // } else {
-        //     changes.push(Change::Text(self.chars.vertical.to_string()));
-        // }
-        // changes.push(Change::Text(
-        //     border(is_top, false, is_left, false).to_string(),
-        // ));
         if corners.top_left != ' ' {
             changes.push(Change::Text(corners.top_left.to_string()));
         }
@@ -148,11 +137,6 @@ impl Widget for Border {
             x: Position::Absolute(rect.x.floor() as usize),
             y: Position::Absolute((rect.y + rect.height - 1.0).floor() as usize),
         });
-        // if is_left {
-        //     changes.push(Change::Text(self.chars.bottom_left.to_string()));
-        // } else {
-        //     changes.push(Change::Text(self.chars.horizontal.to_string()));
-        // }
         if corners.bottom_left != ' ' {
             changes.push(Change::Text(corners.bottom_left.to_string()));
         } else {
@@ -165,9 +149,6 @@ impl Widget for Border {
             x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
             y: Position::Relative(0),
         });
-        // if is_right {
-        //     changes.push(Change::Text(self.chars.bottom_right.to_string()));
-        // }
         if corners.bottom_right != ' ' {
             changes.push(Change::Text(corners.bottom_right.to_string()));
         }
@@ -175,13 +156,58 @@ impl Widget for Border {
     }
 }
 
+impl Widget for IndBorder {
+    fn render(&self, _layout: &Layout, rect: Rect, surface: &mut termwiz::surface::Surface) {
+        let mut changes = vec![];
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute(rect.x.floor() as usize),
+            y: Position::Absolute(rect.y.floor() as usize),
+        });
+        changes.push(Change::Text(TOP_LEFT.to_string()));
+        for _ in 0..(rect.width - 1.0) as usize {
+            changes.push(Change::Text(HORIZONTAL.to_string()));
+        }
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
+            y: Position::Relative(0),
+        });
+        changes.push(Change::Text(TOP_RIGHT.to_string()));
+        for _ in 0..(rect.height - 1.0) as usize {
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(rect.x.floor() as usize),
+                y: Position::Relative(1),
+            });
+            changes.push(Change::Text(VERTICAL.to_string()));
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
+                y: Position::Relative(0),
+            });
+            changes.push(Change::Text(VERTICAL.to_string()));
+        }
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute(rect.x.floor() as usize),
+            y: Position::Absolute((rect.y + rect.height - 1.0).floor() as usize),
+        });
+        changes.push(Change::Text(BOTTOM_LEFT.to_string()));
+        for _ in 0..(rect.width - 1.0) as usize {
+            changes.push(Change::Text(HORIZONTAL.to_string()));
+        }
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute((rect.x + rect.width - 1.0).floor() as usize),
+            y: Position::Relative(0),
+        });
+        changes.push(Change::Text(BOTTOM_RIGHT.to_string()));
+        surface.add_changes(changes);
+    }
+}
+
 pub fn main() -> Result<()> {
     let mut layout = Layout::new();
 
-    let left = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    // let right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    let top_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
-    let bot_right = layout.add_leaf(Leaf::new(Arc::new(Border::new())));
+    let left = layout.add_leaf(Leaf::new(Arc::new(IndBorder)));
+    // let right = layout.add_leaf(Leaf::new(Arc::new(Border)));
+    let top_right = layout.add_leaf(Leaf::new(Arc::new(IndBorder)));
+    let bot_right = layout.add_leaf(Leaf::new(Arc::new(IndBorder)));
     let right = layout.add_with_children(
         Axis::Vertical,
         Some(SizeHint::fill()),
@@ -199,25 +225,28 @@ pub fn main() -> Result<()> {
     s.render()?;
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
-    let new =
-        s.update_layout(|l| l.split(left, Axis::Horizontal, Leaf::new(Arc::new(Border::new()))));
-    s.render()?;
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    for _ in 0..10 {
+        // let parent = s.inspect_layout(|l| l.parent(new2)).unwrap();
+        let leaves = s.inspect_layout(|l| l.leaves());
+        let between = 0..leaves.len();
+        let mut rng = rand::thread_rng();
+        let idx = between.sample_single(&mut rng);
+        let vertical = (0..2).sample_single(&mut rng) % 2 == 0;
+        let _new3 = s.update_layout(|l| {
+            l.split(
+                leaves[idx],
+                if vertical {
+                    Axis::Vertical
+                } else {
+                    Axis::Horizontal
+                },
+                Leaf::new(Arc::new(IndBorder)),
+            )
+        });
+        s.render()?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    }
 
-    let new2 = s.update_layout(|l| {
-        l.split(
-            new.unwrap(),
-            Axis::Vertical,
-            Leaf::new(Arc::new(Border::new())),
-        )
-    });
-    s.render()?;
-    std::thread::sleep(std::time::Duration::from_millis(1000));
-
-    let parent = s.layout.parent(new2.unwrap()).unwrap();
-    let _new3 =
-        s.update_layout(|l| l.split(parent, Axis::Vertical, Leaf::new(Arc::new(Border::new()))));
-    s.render()?;
     std::io::stdin().read_line(&mut buf)?;
 
     Ok(())
