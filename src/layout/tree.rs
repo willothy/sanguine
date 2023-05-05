@@ -277,6 +277,7 @@ impl Layout {
         }
     }
 
+    /// Actual size computation for layout
     fn compute_sizes(
         &mut self,
         bounds: &Rect,
@@ -362,6 +363,7 @@ impl Layout {
         new_sizes
     }
 
+    /// Get the size hint of a given node
     pub fn size(&self, node: NodeId) -> SizeHint {
         match self.nodes.get(node) {
             Some(LayoutNode::Container(container)) => {
@@ -372,14 +374,17 @@ impl Layout {
         }
     }
 
+    /// Get the id of the root node
     pub fn root(&self) -> NodeId {
         self.root
     }
 
+    /// Retrieve the computed layout for a given node
     pub fn layout(&self, node: NodeId) -> Option<&Rect> {
         self.layout.get(&node)
     }
 
+    /// Helper for gathering leaves recursively
     fn leaves_inner(&self, node: NodeId, leaves: &mut Vec<NodeId>) {
         match self.children(node) {
             Some(children) => {
@@ -391,6 +396,7 @@ impl Layout {
         }
     }
 
+    /// Get the leaves of the layout tree
     pub fn leaves(&self) -> Vec<NodeId> {
         let mut leaves = vec![];
 
@@ -399,11 +405,13 @@ impl Layout {
         leaves
     }
 
+    /// Traverse the layout tree
     pub fn traverse(&self, mut f: impl FnMut(NodeId, &LayoutNode)) {
         self.traverse_recursive(self.root, &mut f);
     }
 
-    pub fn traverse_recursive(&self, node_id: NodeId, f: &mut impl FnMut(NodeId, &LayoutNode)) {
+    /// Recursive traversal helper
+    fn traverse_recursive(&self, node_id: NodeId, f: &mut impl FnMut(NodeId, &LayoutNode)) {
         let node = self.nodes.get(node_id).unwrap();
         f(node_id, node);
         match node {
@@ -416,6 +424,9 @@ impl Layout {
         }
     }
 
+    /// Recursively print the layout.
+    ///
+    /// Intended for debug use only
     pub fn print_recursive(&self, node_id: NodeId) {
         let node = self.nodes.get(node_id).unwrap();
         match node {
@@ -437,7 +448,7 @@ impl Layout {
         self.layout.remove(&node);
     }
 
-    /// Adds a new container node to the layout.
+    /// Adds a new (empty) container node to the layout.
     pub fn add_container(&mut self, direction: Axis, size: Option<SizeHint>) -> NodeId {
         let container = Container {
             children: vec![],
@@ -451,6 +462,7 @@ impl Layout {
         id
     }
 
+    /// Sets the size hint for a container
     pub fn set_size(&mut self, node: NodeId, size: SizeHint) {
         self.dirty = true;
         match self.nodes.get_mut(node) {
@@ -461,6 +473,7 @@ impl Layout {
         }
     }
 
+    /// Sets the direction of a container node.
     pub fn set_direction(&mut self, node: NodeId, axis: Axis) {
         self.dirty = true;
         match self.nodes.get_mut(node) {
@@ -488,28 +501,23 @@ impl Layout {
         };
         let node = LayoutNode::Container(container);
         let id = self.nodes.insert(node);
-        c.iter().for_each(|v| {
-            // if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(*v) {
-            //     container.parent = Some(container.parent.unwrap_or(self.root));
-            // }
-            match self.nodes.get_mut(*v) {
-                Some(LayoutNode::Container(container)) => {
-                    container.parent = Some(id);
-                }
-                Some(LayoutNode::Leaf(leaf)) => {
-                    leaf.parent = Some(id);
-                }
-                _ => {}
+        c.iter().for_each(|v| match self.nodes.get_mut(*v) {
+            Some(LayoutNode::Container(container)) => {
+                container.parent = Some(id);
             }
+            Some(LayoutNode::Leaf(leaf)) => {
+                leaf.parent = Some(id);
+            }
+            _ => {}
         });
         self.layout.insert(id, Rect::default());
         id
     }
 
     /// Adds a new leaf node to the layout.
-    pub fn add_leaf(&mut self, leaf: Leaf) -> NodeId {
+    pub fn add_leaf(&mut self, widget: Arc<dyn Widget>) -> NodeId {
         self.dirty = true;
-        let node = LayoutNode::Leaf(leaf);
+        let node = LayoutNode::Leaf(Leaf::new(widget));
         let id = self.nodes.insert(node);
         self.layout.insert(id, Rect::default());
         id
@@ -557,6 +565,7 @@ impl Layout {
         }
     }
 
+    /// Replace the child of a container with another.
     pub fn replace_child(&mut self, parent: NodeId, child: NodeId, new: NodeId) {
         self.dirty = true;
         let old;
@@ -575,10 +584,7 @@ impl Layout {
         self.set_parent(new, Some(parent));
     }
 
-    pub fn node(&self, node: NodeId) -> Option<&LayoutNode> {
-        self.nodes.get(node)
-    }
-
+    /// Sets the parent of the given node.
     fn set_parent(&mut self, node: NodeId, parent: Option<NodeId>) {
         self.dirty = true;
         match self.nodes.get_mut(node) {
@@ -592,6 +598,7 @@ impl Layout {
         }
     }
 
+    /// Checks if the given node is a leaf node.
     pub fn is_leaf(&self, node: NodeId) -> bool {
         match self.nodes.get(node) {
             Some(LayoutNode::Leaf(_)) => true,
@@ -599,6 +606,7 @@ impl Layout {
         }
     }
 
+    /// If the given node is a container, returns a reference to its children.
     pub fn children(&self, node: NodeId) -> Option<&Vec<NodeId>> {
         match self.nodes.get(node) {
             Some(LayoutNode::Container(container)) => Some(&container.children),
@@ -606,6 +614,7 @@ impl Layout {
         }
     }
 
+    /// If the given node is a container, returns its layout direction.
     pub fn direction(&self, node: NodeId) -> Option<Axis> {
         match self.nodes.get(node) {
             Some(LayoutNode::Container(container)) => Some(container.direction),
@@ -613,6 +622,7 @@ impl Layout {
         }
     }
 
+    /// If the given node is a container, returns the number of children it has.
     pub fn child_count(&self, node: NodeId) -> Option<usize> {
         match self.nodes.get(node) {
             Some(LayoutNode::Container(container)) => Some(container.children.len()),
@@ -620,6 +630,7 @@ impl Layout {
         }
     }
 
+    /// If the given node is a leaf, returns a Arc pointing to its widget.
     pub fn widget(&self, node: NodeId) -> Option<Arc<dyn Widget>> {
         match self.nodes.get(node) {
             Some(LayoutNode::Leaf(leaf)) => Some(leaf.widget.clone()),
@@ -627,6 +638,7 @@ impl Layout {
         }
     }
 
+    /// Returns the parent of the given node, if any.
     pub fn parent(&self, node: NodeId) -> Option<NodeId> {
         match self.nodes.get(node) {
             Some(LayoutNode::Container(container)) => container.parent,
@@ -635,6 +647,12 @@ impl Layout {
         }
     }
 
+    /// Checks if the node is the root node
+    pub fn is_root(&self, node: NodeId) -> bool {
+        node == self.root()
+    }
+
+    /// Inserts a new child node at the given index.
     pub fn insert_child_at(&mut self, parent: NodeId, child: NodeId, index: usize) {
         self.dirty = true;
         match self.nodes.get_mut(parent) {
@@ -646,11 +664,21 @@ impl Layout {
         self.set_parent(child, Some(parent));
     }
 
-    pub fn split(&mut self, node: NodeId, direction: Axis, leaf: Leaf) -> NodeId {
+    /// Adds a new container node to the layout by splitting the given node.
+    ///
+    /// If the node is a container and has the same direction as the requested split, a child
+    /// container will be added containing the node and the new node.
+    ///
+    /// If the node is a container and has the opposite direction, a new container will be added to
+    /// its parent, owning the node and the newly created node.
+    ///
+    /// If the node is a leaf, it will be replaced by a container, which will contain it and the
+    /// newly created node.
+    pub fn split(&mut self, node: NodeId, direction: Axis, widget: Arc<dyn Widget>) -> NodeId {
         self.dirty = true;
         if self.is_leaf(node) {
             let new = self.add_container(direction, None);
-            let new_leaf = self.add_leaf(leaf);
+            let new_leaf = self.add_leaf(widget);
             let parent = self.parent(node).unwrap();
             let index = self.child_index(parent, node).unwrap();
             self.remove_child_by_index(parent, index);
@@ -660,7 +688,7 @@ impl Layout {
             new_leaf
         } else {
             let self_dir = self.direction(node).unwrap();
-            let new_leaf = self.add_leaf(leaf);
+            let new_leaf = self.add_leaf(widget);
             if self_dir == direction {
                 self.add_child(node, new_leaf);
                 new_leaf

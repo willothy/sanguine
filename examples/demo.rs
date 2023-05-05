@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use rand::distributions::uniform::SampleRange;
-use sanguine::prelude::{Axis, Layout, Leaf, Rect, Sanguine, SizeHint, Widget};
+use sanguine::prelude::{Axis, Layout, Rect, Sanguine, SizeHint, Widget};
 use termwiz::surface::{Change, Position};
 
 pub struct BorderChars {
@@ -218,10 +218,10 @@ type B = IndBorder;
 pub fn main() -> Result<()> {
     let mut layout = Layout::new();
 
-    let left = layout.add_leaf(Leaf::new(Arc::new(B::new())));
+    let left = layout.add_leaf(Arc::new(B::new()));
     // let right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
-    let top_right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
-    let bot_right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
+    let top_right = layout.add_leaf(Arc::new(B::new()));
+    let bot_right = layout.add_leaf(Arc::new(B::new()));
     let right = layout.add_with_children(
         Axis::Vertical,
         Some(SizeHint::fill()),
@@ -254,7 +254,7 @@ pub fn main() -> Result<()> {
                 } else {
                     Axis::Horizontal
                 },
-                Leaf::new(Arc::new(B::new())),
+                Arc::new(B::new()),
             )
         });
         s.render()?;
