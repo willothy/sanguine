@@ -7,6 +7,10 @@ Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 > **Note**<br>
 > Sanguine is not quite ready for use.<br>
 > You can run the `demo` example if you want to try it out.<br>
+<br/>
+
+> The demo is from the old version (in the `old` branch)<br>
+> The rewritten version features a new, dynamic layout management system, but doesn't have floating windows or any builtin widgets yet.
 
 ## Goals:
 
