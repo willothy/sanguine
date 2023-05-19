@@ -20,7 +20,13 @@ pub trait Widget {
     #[allow(unused_variables)]
     /// This method is called when an input event is received that targets this widget.
     /// It allows the widget to update its internal state in response to an event.
-    fn update(&mut self, event: Event, exit_tx: Arc<Sender<()>>) {}
+    fn update(&mut self, bounds: &Rect, event: Event, exit_tx: Arc<Sender<()>>) {}
+
+    /// This method is called when the widget is focused, to determine where (or if) to display the
+    /// cursor.
+    fn cursor(&self) -> Option<(usize, usize)> {
+        None
+    }
 
     /// This method provides a hint to the layout engine about how much
     /// space the widget should take up.

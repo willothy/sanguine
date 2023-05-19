@@ -1,8 +1,11 @@
 use std::sync::{mpsc::Sender, Arc, RwLock};
 
-use termwiz::surface::{Change, Position, Surface};
+use termwiz::{
+    input::MouseEvent,
+    surface::{Change, Position, Surface},
+};
 
-use crate::{widget::Widget, Event};
+use crate::{layout::Rect, widget::Widget, Event};
 
 pub struct Border {
     title: String,
@@ -86,7 +89,38 @@ impl Widget for Border {
         surface.draw_from_screen(&inner_screen, 1, 1);
     }
 
-    fn update(&mut self, event: Event, exit_tx: Arc<Sender<()>>) {
-        self.inner.write().unwrap().update(event, exit_tx);
+    fn cursor(&self) -> Option<(usize, usize)> {
+        self.inner
+            .read()
+            .unwrap()
+            .cursor()
+            .map(|(x, y)| (x + 1, y + 1))
+    }
+
+    fn update(&mut self, rect: &Rect, mut event: Event, exit_tx: Arc<Sender<()>>) {
+        let rect = Rect {
+            x: rect.x + 1.,
+            y: rect.y + 1.,
+            width: rect.width - 2.,
+            height: rect.height - 2.,
+        };
+
+        match &mut event {
+            Event::Input(evt) => match evt {
+                termwiz::input::InputEvent::Mouse(MouseEvent {
+                    x,
+                    y,
+                    mouse_buttons: _,
+                    modifiers: _,
+                }) => {
+                    *x -= 2;
+                    *y -= 2;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        self.inner.write().unwrap().update(&rect, event, exit_tx);
     }
 }

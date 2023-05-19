@@ -93,7 +93,7 @@ use layout::*;
 use termwiz::{
     caps::Capabilities,
     input::{InputEvent, KeyEvent, Modifiers, MouseButtons, MouseEvent},
-    surface::Surface,
+    surface::{Change, Position, Surface},
     terminal::Terminal,
     terminal::{buffered::BufferedTerminal, UnixTerminal},
 };
@@ -256,7 +256,7 @@ impl App {
                             widget
                                 .write()
                                 .map_err(|_| Error::WidgetWriteLockError(focus))?
-                                .update(event, self.exit_tx.clone());
+                                .update(layout, event, self.exit_tx.clone());
                         } else {
                             if *mouse_buttons == MouseButtons::LEFT {
                                 // If there's no focus, focus the node under the mouse
@@ -272,15 +272,12 @@ impl App {
                             // If there's no focus, we can't do anything
                             return Ok(());
                         };
-                        let widget = self
-                            .layout
-                            .widget(focus)
-                            .ok_or(Error::WidgetNotFound(focus))?;
+                        let (widget, layout) = self.render_ctx(focus)?;
 
                         widget
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
-                            .update(event, self.exit_tx.clone());
+                            .update(layout, event, self.exit_tx.clone());
                     };
                 }
             },
@@ -293,14 +290,11 @@ impl App {
                         // If there's no focus, we can't do anything
                         return Ok(());
                     };
-                    let widget = self
-                        .layout
-                        .widget(focus)
-                        .ok_or(Error::WidgetNotFound(focus))?;
+                    let (widget, layout) = self.render_ctx(focus)?;
                     widget
                         .write()
                         .map_err(|_| Error::WidgetWriteLockError(focus))?
-                        .update(event, self.exit_tx.clone());
+                        .update(layout, event, self.exit_tx.clone());
                 };
             }
         }
@@ -413,6 +407,19 @@ impl App {
 
         // Draw contents of background screen to terminal
         self.term.draw_from_screen(&screen, 0, 0);
+
+        if let Some(focus) = self.focus {
+            let layout = self.layout.layout(focus).unwrap();
+            if let Some(cursor) = self.layout.widget(focus).unwrap().read().unwrap().cursor() {
+                self.term.add_changes(vec![
+                    Change::CursorVisibility(termwiz::surface::CursorVisibility::Visible),
+                    Change::CursorPosition {
+                        x: Position::Absolute(layout.x as usize + cursor.0),
+                        y: Position::Absolute(layout.y as usize + cursor.1),
+                    },
+                ]);
+            }
+        }
 
         // Compute optimized diff and flush
         self.term.flush().map_err(|_| Error::TerminalError)?;
