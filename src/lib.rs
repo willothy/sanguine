@@ -172,6 +172,8 @@ impl Default for Config {
     }
 }
 
+pub type GlobalHandler = dyn Fn(&mut App, &Event, Arc<Sender<()>>) -> Result<bool>;
+
 /// The main application struct, responsible for managing the layout tree,
 /// keeping track of focus, and rendering the widgets.
 pub struct App {
@@ -192,7 +194,8 @@ pub struct App {
     /// Global event handler, which intercepts events before they are propagated to the focused
     /// widget. If the handler returns `Ok(true)`, the event is considered handled and is not
     /// propagated to the widget that would otherwise receive it.
-    global_event_handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
+    global_event_handler: Box<GlobalHandler>,
+    /// Configuration struct
     config: Config,
 }
 
@@ -234,8 +237,7 @@ impl App {
         // Safety: The function pointer is stored in self so the borrow checker doesn't like
         // us calling it with a mutable reference to self. However, the function pointer won't be changed
         // so it should be safe to call with a mutable reference to self.
-        let evt = &self.global_event_handler
-            as *const dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>;
+        let evt = &self.global_event_handler as *const GlobalHandler;
         unsafe { (*evt)(self, event, self.exit_tx.clone()) }
     }
 
@@ -464,7 +466,8 @@ impl App {
             l.leaves()
                 .into_iter()
                 .cycle()
-                .skip_while(|v| *v != current).nth(1)
+                .skip_while(|v| *v != current)
+                .nth(1)
                 .ok_or(Error::NoFocus)
         })?;
         self.set_focus(next)?;
@@ -503,7 +506,7 @@ impl App {
     pub fn with_global_handler(
         layout: Layout,
         config: Config,
-        handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
+        handler: Box<GlobalHandler>,
     ) -> Result<Self> {
         let mut new = Self::new(layout, config)?;
         new.global_event_handler = handler;
