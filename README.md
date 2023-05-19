@@ -15,7 +15,7 @@ Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 - [x] Extensible widget trait
 - [x] Focus
 - [x] Focused-widget keyboard events
-- [ ] Mouse events
+- [x] Mouse events
 
 ## Demo
 
