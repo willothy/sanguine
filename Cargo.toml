@@ -11,6 +11,7 @@ keywords = ["tui", "terminal", "user-interface"]
 categories = ["gui", "command-line-interface"]
 
 [dependencies]
+rayon = "1.7.0"
 slotmap = "1.0.6"
 termwiz = "0.20.0"
 thiserror = "1.0.40"

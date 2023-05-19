@@ -83,13 +83,14 @@
 //! ```
 
 use std::{
-    sync::{atomic::AtomicBool, mpsc::Sender, Arc, RwLock},
+    sync::{atomic::AtomicBool, mpsc::Sender, Arc, Mutex, RwLock},
     time::Duration,
     unreachable,
 };
 
 use error::{Error, Result};
 use layout::*;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use termwiz::{
     caps::Capabilities,
     input::{InputEvent, KeyEvent, Modifiers, MouseButtons, MouseEvent},
@@ -316,7 +317,7 @@ impl App {
         while let Some(event) = self
             .term
             .terminal()
-            .poll_input(Some(Duration::from_millis(2)))
+            .poll_input(Some(Duration::from_millis(5)))
             .map_err(|_| Error::PollInputFailed)?
         {
             self.process_event(Event::Input(event))?;
@@ -377,39 +378,48 @@ impl App {
         self.layout.compute(&self.size);
 
         // Create temporary background screen
-        let mut screen = Surface::new(self.size.width as usize, self.size.height as usize);
+        let screen = Arc::new(Mutex::new(Surface::new(
+            self.size.width as usize,
+            self.size.height as usize,
+        )));
 
         // Retrieve leaves (windows) from layout
-        self.layout.leaves().into_iter().for_each(|node| {
-            let Ok((widget, layout)) = self.render_ctx(node) else {
-                // Do nothing if widget or layout is missing
-                // TODO: Log error
-                return;
-            };
+        self.layout
+            .leaves()
+            .into_par_iter()
+            .filter_map(|node| {
+                let widget = self.layout.widget(node).unwrap();
+                let layout = self.layout.layout(node).unwrap();
 
-            // Draw onto widget screen for composition
-            let mut widget_screen = Surface::new(layout.width as usize, layout.height as usize);
+                // Draw onto widget screen for composition
+                let mut widget_screen = Surface::new(layout.width as usize, layout.height as usize);
 
-            // Render widget onto widget screen
-            let Ok(widget) = widget.read() else {
-                return
-            };
-            self.focus
-                .and_then(|focus| {
-                    widget.render(&self.layout, &mut widget_screen, node == focus);
-                    Some(())
-                })
-                .or_else(|| {
-                    widget.render(&self.layout, &mut widget_screen, false);
-                    Some(())
-                });
-
-            // Draw widget onto background screen
-            screen.draw_from_screen(&widget_screen, layout.x as usize, layout.y as usize);
-        });
+                // Render widget onto widget screen
+                let Ok(widget) = widget.read() else {
+                    return None
+                };
+                self.focus
+                    .and_then(|focus| {
+                        widget.render(&self.layout, &mut widget_screen, node == focus);
+                        Some(())
+                    })
+                    .or_else(|| {
+                        widget.render(&self.layout, &mut widget_screen, false);
+                        Some(())
+                    });
+                Some((layout, widget_screen))
+            })
+            .for_each(|(layout, widget_screen)| {
+                // Draw widget onto background screen
+                screen.lock().unwrap().draw_from_screen(
+                    &widget_screen,
+                    layout.x as usize,
+                    layout.y as usize,
+                );
+            });
 
         // Draw contents of background screen to terminal
-        self.term.draw_from_screen(&screen, 0, 0);
+        self.term.draw_from_screen(&screen.lock().unwrap(), 0, 0);
 
         if let Some(focus) = self.focus {
             let layout = self.layout.layout(focus).unwrap();

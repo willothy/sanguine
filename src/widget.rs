@@ -12,7 +12,7 @@ use crate::{layout::*, Event};
 ///
 /// Widgets can be shared behind an `Arc<RwLock<dyn Widget>>` to show the same widget in multiple
 /// windows.
-pub trait Widget {
+pub trait Widget: Send + Sync {
     /// This method is called every render loop, and is responsible for rendering the widget onto
     /// the provided surface.
     fn render(&self, layout: &Layout, surface: &mut Surface, focused: bool);
