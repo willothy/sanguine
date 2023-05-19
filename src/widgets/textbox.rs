@@ -18,7 +18,7 @@ impl TextBox {
 impl Widget for TextBox {
     fn render(
         &self,
-        _layout: &crate::layout::tree::Layout,
+        _layout: &crate::layout::Layout,
         surface: &mut termwiz::surface::Surface,
         _focused: bool,
     ) {

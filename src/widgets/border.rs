@@ -28,7 +28,7 @@ const BOTTOM_RIGHT: char = '┘';
 impl Widget for Border {
     fn render(
         &self,
-        layout: &crate::layout::tree::Layout,
+        layout: &crate::layout::Layout,
         surface: &mut termwiz::surface::Surface,
         focused: bool,
     ) {

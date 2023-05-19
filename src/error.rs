@@ -1,4 +1,6 @@
-use crate::layout::tree::NodeId;
+//! Error handling
+
+use crate::layout::NodeId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

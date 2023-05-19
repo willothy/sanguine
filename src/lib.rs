@@ -4,10 +4,7 @@ use std::{
 };
 
 use error::{Error, Result};
-use layout::{
-    geometry::Rect,
-    tree::{Layout, NodeId},
-};
+use layout::*;
 use termwiz::{
     caps::Capabilities,
     input::{InputEvent, KeyEvent, Modifiers},
@@ -15,7 +12,7 @@ use termwiz::{
     terminal::Terminal,
     terminal::{buffered::BufferedTerminal, UnixTerminal},
 };
-use widget::Widget;
+pub use widget::Widget;
 
 /// Re-exports from termwiz relating to input and event handling
 pub mod input {
@@ -32,20 +29,20 @@ pub mod surface {
 pub mod prelude {
     pub use crate::error::*;
     pub use crate::input::*;
-    pub use crate::layout::geometry::*;
-    pub use crate::layout::tree::{Layout, NodeId};
+    pub use crate::layout::*;
     pub use crate::surface::*;
-    pub use crate::widget::Widget;
     pub use crate::widgets::border::Border;
     pub use crate::widgets::textbox::TextBox;
     pub use crate::Sanguine;
+    pub use crate::Widget;
 }
 
 pub mod error;
 pub mod layout;
-pub mod widget;
+mod widget;
 pub mod widgets;
 
+/// An event that can be sent to a widget or handled by the global event handler.
 pub enum Event {
     Input(InputEvent),
     User(String),
@@ -74,7 +71,7 @@ pub struct Sanguine {
     /// Global event handler, which intercepts events before they are propagated to the focused
     /// widget. If the handler returns `Ok(true)`, the event is considered handled and is not
     /// propagated to the widget that would otherwise receive it.
-    global_event_handler: Box<dyn Fn(&mut Self, &InputEvent, Arc<Sender<()>>) -> Result<bool>>,
+    global_event_handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
 }
 
 impl Drop for Sanguine {
@@ -101,13 +98,13 @@ impl Sanguine {
         ))
     }
 
-    fn global_event(&mut self, event: &InputEvent) -> Result<bool> {
+    fn global_event(&mut self, event: &Event) -> Result<bool> {
         if self.ctrl_q_quit {
             match event {
-                InputEvent::Key(KeyEvent {
+                Event::Input(InputEvent::Key(KeyEvent {
                     key: termwiz::input::KeyCode::Char('q'),
                     modifiers: Modifiers::CTRL,
-                }) => self.exit_tx.send(()).map_err(|_| Error::SignalSendFail)?,
+                })) => self.exit_tx.send(()).map_err(|_| Error::SignalSendFail)?,
                 _ => {}
             }
         }
@@ -116,26 +113,46 @@ impl Sanguine {
         // us calling it with a mutable reference to self. However, the function pointer won't be changed
         // so it should be safe to call with a mutable reference to self.
         let evt = &self.global_event_handler
-            as *const dyn Fn(&mut Self, &InputEvent, Arc<Sender<()>>) -> Result<bool>;
+            as *const dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>;
         unsafe { (*evt)(self, event, self.exit_tx.clone()) }
     }
 
     fn process_event(&mut self, event: Event) -> Result<()> {
-        match event {
-            Event::Input(event) => match event {
+        match &event {
+            Event::Input(input_event) => match &input_event {
                 InputEvent::Resized { cols, rows } => {
-                    self.size.width = cols as f32;
-                    self.size.height = rows as f32;
+                    self.size.width = *cols as f32;
+                    self.size.height = *rows as f32;
                 }
                 InputEvent::Wake => {}
                 InputEvent::PixelMouse(_event) => {}
-                event @ InputEvent::Mouse(_) => {
+                InputEvent::Mouse(_) => {
                     self.global_event(&event)?;
                 }
-                event => {
+                _ => {
                     // Handle global key events
-                    self.global_event(&event)?;
+                    if !self.global_event(&event)? {
+                        let Some(focus) = self.focus else {
+                            // If there's no focus, we can't do anything
+                            return Ok(());
+                        };
+                        let widget = self
+                            .layout
+                            .widget(focus)
+                            .ok_or(Error::WidgetNotFound(focus))?;
 
+                        widget
+                            .write()
+                            .map_err(|_| Error::WidgetWriteLockError(focus))?
+                            .update(event, self.exit_tx.clone());
+                    };
+                }
+            },
+            Event::Exit => {
+                self.exit.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            Event::User(_) => {
+                if !self.global_event(&event)? {
                     let Some(focus) = self.focus else {
                         // If there's no focus, we can't do anything
                         return Ok(());
@@ -144,29 +161,11 @@ impl Sanguine {
                         .layout
                         .widget(focus)
                         .ok_or(Error::WidgetNotFound(focus))?;
-
                     widget
                         .write()
                         .map_err(|_| Error::WidgetWriteLockError(focus))?
-                        .update(Event::Input(event), self.exit_tx.clone());
-                }
-            },
-            Event::Exit => {
-                self.exit.store(true, std::sync::atomic::Ordering::SeqCst);
-            }
-            Event::User(event) => {
-                let Some(focus) = self.focus else {
-                        // If there's no focus, we can't do anything
-                        return Ok(());
-                    };
-                let widget = self
-                    .layout
-                    .widget(focus)
-                    .ok_or(Error::WidgetNotFound(focus))?;
-                widget
-                    .write()
-                    .map_err(|_| Error::WidgetWriteLockError(focus))?
-                    .update(Event::User(event), self.exit_tx.clone());
+                        .update(event, self.exit_tx.clone());
+                };
             }
         }
 
@@ -339,7 +338,7 @@ impl Sanguine {
     /// from propagating to widgets, or false to allow propagation.
     pub fn with_global_handler(
         layout: Layout,
-        handler: Box<dyn Fn(&mut Self, &InputEvent, Arc<Sender<()>>) -> Result<bool>>,
+        handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
     ) -> Result<Self> {
         let mut new = Self::new(layout)?;
         new.global_event_handler = handler;
