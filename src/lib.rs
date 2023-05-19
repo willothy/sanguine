@@ -297,13 +297,11 @@ impl App {
                                 .write()
                                 .map_err(|_| Error::WidgetWriteLockError(focus))?
                                 .update(layout, event, self.exit_tx.clone())?;
-                        } else {
-                            if *mouse_buttons == MouseButtons::LEFT
-                                || self.config.focus_follows_hover
-                            {
-                                // If there's no focus, focus the node under the mouse
-                                self.focus = Some(node);
-                            }
+                        } else if *mouse_buttons == MouseButtons::LEFT
+                            || self.config.focus_follows_hover
+                        {
+                            // If there's no focus, focus the node under the mouse
+                            self.focus = Some(node);
                         }
                     };
                 }
@@ -345,7 +343,7 @@ impl App {
     }
 
     fn handle_exit_events(&mut self) -> Result<()> {
-        if let Ok(_) = self.exit_rx.try_recv() {
+        if self.exit_rx.try_recv().is_ok() {
             self.process_event(Event::Exit)?;
         }
         Ok(())
@@ -466,9 +464,7 @@ impl App {
             l.leaves()
                 .into_iter()
                 .cycle()
-                .skip_while(|v| *v != current)
-                .skip(1)
-                .next()
+                .skip_while(|v| *v != current).nth(1)
                 .ok_or(Error::NoFocus)
         })?;
         self.set_focus(next)?;

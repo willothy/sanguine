@@ -244,7 +244,6 @@ impl Layout {
         let node = node.unwrap_or(self.root());
         self.compute_node(node, bounds);
         if self.is_leaf(node) {
-            return;
         } else {
             let children = self.children(node).unwrap().clone();
             children.iter().for_each(|id| {
@@ -258,7 +257,6 @@ impl Layout {
     fn compute_node(&mut self, node: NodeId, bounds: &Rect) {
         self.layout.insert(node, bounds.clone());
         if self.is_leaf(node) {
-            return;
         } else {
             // TODO: Handle size hints
             let children = self.children(node).unwrap();
@@ -272,7 +270,7 @@ impl Layout {
                 Axis::Horizontal => bounds.x,
                 Axis::Vertical => bounds.y,
             };
-            self.compute_sizes(&bounds, &sizes, &axis)
+            self.compute_sizes(bounds, &sizes, &axis)
                 .iter()
                 .for_each(|(k, v)| {
                     let size = match v {
@@ -351,7 +349,7 @@ impl Layout {
         }
         let mut pct_total = 0;
         percents.iter_mut().for_each(|(k, f)| {
-            *f *= remaining as f32;
+            *f *= remaining;
             let size = f.round() as usize;
             pct_total += size;
             new_sizes.push((**k, SizeHint::Fixed(size)));
