@@ -222,37 +222,41 @@ impl App {
                             return Ok(());
                         };
                         if let Some(focus) = self.focus {
-                            if focus != node {
-                                if *mouse_buttons == MouseButtons::LEFT {
+                            let focus = if focus != node {
+                                // Send hover events to the hovered node, but focus the window if the mouse is clicked
+                                if *mouse_buttons != MouseButtons::NONE {
                                     // If the node under the mouse is different from the focused node,
-                                    // unfocus the focused node and focus the new node
+                                    // focus the new node and consume the event
                                     self.focus = Some(node);
+                                    return Ok(());
                                 }
+                                node
                             } else {
-                                // If the node under the mouse is the same as the focused node,
-                                // send the event to the focused node
-                                let (widget, layout) = self.render_ctx(focus)?;
+                                focus
+                            };
+                            // If the node under the mouse is the same as the focused node,
+                            // send the event to the focused node
+                            let (widget, layout) = self.render_ctx(focus)?;
 
-                                let event = match event {
-                                    Event::Input(InputEvent::Mouse(MouseEvent {
-                                        x,
-                                        y,
-                                        mouse_buttons,
-                                        modifiers,
-                                    })) => Event::Input(InputEvent::Mouse(MouseEvent {
-                                        x: x - layout.x as u16,
-                                        y: y - layout.y as u16,
-                                        mouse_buttons,
-                                        modifiers,
-                                    })),
-                                    _ => unreachable!(),
-                                };
+                            let event = match event {
+                                Event::Input(InputEvent::Mouse(MouseEvent {
+                                    x,
+                                    y,
+                                    mouse_buttons,
+                                    modifiers,
+                                })) => Event::Input(InputEvent::Mouse(MouseEvent {
+                                    x: x - layout.x as u16,
+                                    y: y - layout.y as u16,
+                                    mouse_buttons,
+                                    modifiers,
+                                })),
+                                _ => unreachable!(),
+                            };
 
-                                widget
-                                    .write()
-                                    .map_err(|_| Error::WidgetWriteLockError(focus))?
-                                    .update(event, self.exit_tx.clone());
-                            }
+                            widget
+                                .write()
+                                .map_err(|_| Error::WidgetWriteLockError(focus))?
+                                .update(event, self.exit_tx.clone());
                         } else {
                             if *mouse_buttons == MouseButtons::LEFT {
                                 // If there's no focus, focus the node under the mouse
