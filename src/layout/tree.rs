@@ -3,12 +3,14 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use slotmap::DefaultKey;
+use slotmap::new_key_type;
 
 use super::geometry::{Axis, Direction, Rect, SizeHint};
 use crate::widget::Widget;
 
-pub type NodeId = DefaultKey;
+new_key_type! {
+    pub struct NodeId;
+}
 
 pub struct Leaf {
     widget: Arc<RwLock<dyn Widget>>,
@@ -19,6 +21,17 @@ impl Leaf {
     pub fn new(widget: impl Widget + 'static) -> Self {
         Self {
             widget: Arc::new(RwLock::new(widget)),
+            parent: None,
+        }
+    }
+}
+
+impl Clone for Leaf {
+    fn clone(&self) -> Self {
+        Self {
+            widget: self.widget.clone(),
+            // When a leaf is cloned, the intention is to clone its widget. Parent can be set
+            // separately if needed.
             parent: None,
         }
     }
@@ -52,7 +65,7 @@ pub struct Layout {
 impl Layout {
     /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
-        let mut nodes = slotmap::SlotMap::new();
+        let mut nodes = slotmap::SlotMap::with_key();
         let root = nodes.insert(LayoutNode::Container(Container {
             direction: Axis::Vertical,
             size: None,
@@ -400,12 +413,12 @@ impl Layout {
     }
 
     /// Get the leaves of the layout tree
-    pub fn leaves(&self) -> impl Iterator<Item = NodeId> {
+    pub fn leaves(&self) -> Vec<NodeId> {
         let mut leaves = vec![];
 
         self.leaves_inner(self.root, &mut leaves);
 
-        leaves.into_iter()
+        leaves
     }
 
     /// Traverse the layout tree
@@ -521,6 +534,23 @@ impl Layout {
     pub fn add_leaf(&mut self, widget: impl Widget + 'static) -> NodeId {
         self.dirty = true;
         let node = LayoutNode::Leaf(Leaf::new(widget));
+        let id = self.nodes.insert(node);
+        self.layout.insert(id, Rect::default());
+        id
+    }
+
+    /// Directly adds a leaf node to the layout.
+    pub fn clone_leaf(&mut self, leaf: NodeId) -> NodeId {
+        self.dirty = true;
+        let widget = self
+            .nodes
+            .get(leaf)
+            .map(|l| match l {
+                LayoutNode::Leaf(leaf) => leaf.clone(),
+                _ => panic!("Node is not a leaf"),
+            })
+            .unwrap();
+        let node = LayoutNode::Leaf(widget);
         let id = self.nodes.insert(node);
         self.layout.insert(id, Rect::default());
         id
