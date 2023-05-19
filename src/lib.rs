@@ -55,7 +55,7 @@
 //!     // propagated.
 //!     let mut app = Sanguine::with_global_handler(
 //!         layout,
-//!         Box::new(move |state: &mut Sanguine, event: &Event, _| {
+//!         |state: &mut Sanguine, event: &Event, _| {
 //!             if let Event::Input(InputEvent::Key(KeyEvent {
 //!                 key: KeyCode::Tab,
 //!                 modifiers: Modifiers::SHIFT,
@@ -65,7 +65,7 @@
 //!                 return Ok(true);
 //!             }
 //!             Ok(false)
-//!         }),
+//!         },
 //!     )?;
 //!     // Set the initial focus to the left node.
 //!     // Only windows can be focused, attempting to focus a container will throw an error.
@@ -504,10 +504,10 @@ impl App {
     pub fn with_global_handler(
         layout: Layout,
         config: Config,
-        handler: Box<GlobalHandler>,
+        handler: impl Fn(&mut App, &Event, Arc<Sender<()>>) -> Result<bool> + 'static,
     ) -> Result<Self> {
         let mut new = Self::new(layout, config)?;
-        new.global_event_handler = handler;
+        new.global_event_handler = Box::new(handler);
         Ok(new)
     }
 }

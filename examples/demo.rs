@@ -47,7 +47,7 @@ pub fn main() -> Result<()> {
         layout,
         // The default config is fine for this example
         Config::default(),
-        Box::new(move |state: &mut App, event: &Event, _| {
+        |state: &mut App, event: &Event, _| {
             if let Event::Input(InputEvent::Key(KeyEvent {
                 key: KeyCode::Tab,
                 modifiers: Modifiers::SHIFT,
@@ -57,7 +57,7 @@ pub fn main() -> Result<()> {
                 return Ok(true);
             }
             Ok(false)
-        }),
+        },
     )?;
     // Set the initial focus to the left node.
     // Only windows can be focused, attempting to focus a container will throw an error.
