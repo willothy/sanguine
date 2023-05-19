@@ -12,5 +12,5 @@ categories = ["gui", "command-line-interface"]
 
 [dependencies]
 slotmap = "1.0.6"
-termwiz = { version = "0.20.0" }
+termwiz = "0.20.0"
 thiserror = "1.0.40"

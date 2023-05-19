@@ -43,9 +43,9 @@ pub fn main() -> Result<()> {
     // In this case, we only handle occurrences of Shift+Tab, which we use to cycle focus.
     // If the Shift+Tab is pressed, we return true to signal that the event should not be
     // propagated.
-    let mut app = Sanguine::with_global_handler(
+    let mut app = App::with_global_handler(
         layout,
-        Box::new(move |state: &mut Sanguine, event: &Event, _| {
+        Box::new(move |state: &mut App, event: &Event, _| {
             if let Event::Input(InputEvent::Key(KeyEvent {
                 key: KeyCode::Tab,
                 modifiers: Modifiers::SHIFT,

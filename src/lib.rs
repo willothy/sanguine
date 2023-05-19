@@ -126,6 +126,7 @@ mod widget;
 pub mod widgets;
 
 /// An event that can be sent to a widget or handled by the global event handler.
+#[derive(Debug)]
 pub enum Event {
     Input(InputEvent),
     User(String),
@@ -134,7 +135,7 @@ pub enum Event {
 
 /// The main application struct, responsible for managing the layout tree,
 /// keeping track of focus, and rendering the widgets.
-pub struct Sanguine {
+pub struct App {
     /// The layout tree
     layout: Layout,
     /// The actual terminal used for rendering
@@ -157,7 +158,7 @@ pub struct Sanguine {
     global_event_handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
 }
 
-impl Drop for Sanguine {
+impl Drop for App {
     fn drop(&mut self) {
         // Restore cursor visibility and leave alternate screen when app exits
         self.term.add_change(Change::CursorVisibility(
@@ -167,7 +168,7 @@ impl Drop for Sanguine {
     }
 }
 
-impl Sanguine {
+impl App {
     fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget>>, &Rect)> {
         Ok((
             // Retrieve widget trait object from node
@@ -400,7 +401,7 @@ impl Sanguine {
         ));
         let (exit_tx, exit_rx) = std::sync::mpsc::channel();
 
-        Ok(Sanguine {
+        Ok(App {
             global_event_handler: Box::new(|_, _, _| Ok(false)),
             focus: None,
             size: {
