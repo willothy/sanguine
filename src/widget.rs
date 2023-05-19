@@ -10,7 +10,7 @@ use crate::{layout::*, Event};
 /// Implementors of `Widget` can be displayed inside of a window (a layout `Leaf`), or
 /// nested in other widgets.
 ///
-/// Widgets can be shared behind an Arc<RwLock<dyn Widget>> to show the same widget in multiple
+/// Widgets can be shared behind an `Arc<RwLock<dyn Widget>>` to show the same widget in multiple
 /// windows.
 pub trait Widget {
     /// This method is called every render loop, and is responsible for rendering the widget onto
