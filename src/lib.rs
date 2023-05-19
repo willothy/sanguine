@@ -134,6 +134,44 @@ pub enum Event {
     Exit,
 }
 
+/// Contains configuration options for the Sanguine application.
+pub struct Config {
+    /// Whether or not to quit on ctrl-q (default: true)
+    ///
+    /// Set to false if you implement your own exit handling.
+    pub ctrl_q_quit: bool,
+    /// Whether or not to focus a window when the mouse hovers over it (default: false)
+    pub focus_follows_hover: bool,
+}
+
+impl Config {
+    /// Create a new Config struct with the given options
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Set whether or not to quit on ctrl-q
+    pub fn ctrl_q_quit(mut self, ctrl_q_quit: bool) -> Self {
+        self.ctrl_q_quit = ctrl_q_quit;
+        self
+    }
+
+    /// Set whether or not to focus a window when the mouse hovers over it
+    pub fn focus_follows_hover(mut self, focus_follows_hover: bool) -> Self {
+        self.focus_follows_hover = focus_follows_hover;
+        self
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            ctrl_q_quit: true,
+            focus_follows_hover: false,
+        }
+    }
+}
+
 /// The main application struct, responsible for managing the layout tree,
 /// keeping track of focus, and rendering the widgets.
 pub struct App {
@@ -151,12 +189,11 @@ pub struct App {
     exit_rx: std::sync::mpsc::Receiver<()>,
     /// Used to signal the exit internally
     exit: AtomicBool,
-    /// Whether to quit on Ctrl+Q (for applications not implementing their own exit behavior)
-    ctrl_q_quit: bool,
     /// Global event handler, which intercepts events before they are propagated to the focused
     /// widget. If the handler returns `Ok(true)`, the event is considered handled and is not
     /// propagated to the widget that would otherwise receive it.
     global_event_handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
+    config: Config,
 }
 
 impl Drop for App {
@@ -184,7 +221,7 @@ impl App {
     }
 
     fn global_event(&mut self, event: &Event) -> Result<bool> {
-        if self.ctrl_q_quit {
+        if self.config.ctrl_q_quit {
             match event {
                 Event::Input(InputEvent::Key(KeyEvent {
                     key: termwiz::input::KeyCode::Char('q'),
@@ -261,7 +298,9 @@ impl App {
                                 .map_err(|_| Error::WidgetWriteLockError(focus))?
                                 .update(layout, event, self.exit_tx.clone())?;
                         } else {
-                            if *mouse_buttons == MouseButtons::LEFT {
+                            if *mouse_buttons == MouseButtons::LEFT
+                                || self.config.focus_follows_hover
+                            {
                                 // If there's no focus, focus the node under the mouse
                                 self.focus = Some(node);
                             }
@@ -322,13 +361,6 @@ impl App {
             self.process_event(Event::Input(event))?;
         }
         Ok(())
-    }
-
-    /// Whether or not to quit on ctrl-q (default: true)
-    ///
-    /// Set to false if you implement your own exit handling.
-    pub fn ctrl_q_quit(&mut self, ctrl_q_quit: bool) {
-        self.ctrl_q_quit = ctrl_q_quit;
     }
 
     /// Calls a closure, passing in a mutable reference to the layout.
@@ -444,7 +476,7 @@ impl App {
     }
 
     /// Create a new Sanguine application with the provided layout and no global event handler.
-    pub fn new(layout: Layout) -> Result<Self> {
+    pub fn new(layout: Layout, config: Config) -> Result<Self> {
         let term = Capabilities::new_from_env()
             .and_then(|caps| {
                 UnixTerminal::new(caps).and_then(|mut t| {
@@ -465,7 +497,7 @@ impl App {
             layout,
             term,
             exit_rx,
-            ctrl_q_quit: true,
+            config,
         })
     }
 
@@ -474,9 +506,10 @@ impl App {
     /// from propagating to widgets, or false to allow propagation.
     pub fn with_global_handler(
         layout: Layout,
+        config: Config,
         handler: Box<dyn Fn(&mut Self, &Event, Arc<Sender<()>>) -> Result<bool>>,
     ) -> Result<Self> {
-        let mut new = Self::new(layout)?;
+        let mut new = Self::new(layout, config)?;
         new.global_event_handler = handler;
         Ok(new)
     }

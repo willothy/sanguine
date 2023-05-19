@@ -45,6 +45,8 @@ pub fn main() -> Result<()> {
     // propagated.
     let mut app = App::with_global_handler(
         layout,
+        // The default config is fine for this example
+        Config::default(),
         Box::new(move |state: &mut App, event: &Event, _| {
             if let Event::Input(InputEvent::Key(KeyEvent {
                 key: KeyCode::Tab,
