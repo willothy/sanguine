@@ -1,4 +1,7 @@
 //! Built-in widgets.
 
-pub mod border;
-pub mod textbox;
+mod border;
+mod textbox;
+
+pub use border::Border;
+pub use textbox::TextBox;

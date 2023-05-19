@@ -1,12 +1,16 @@
+//! Displays a border around a widget, with a title and a `*` when the widget is focused.
+
 use std::sync::{mpsc::Sender, Arc, RwLock};
 
-use termwiz::{
-    input::MouseEvent,
-    surface::{Change, Position, Surface},
+use crate::{
+    error::Error,
+    event::{Event, InputEvent, MouseEvent},
+    layout::Rect,
+    surface::*,
+    Widget,
 };
 
-use crate::{layout::Rect, prelude::Error, widget::Widget, Event};
-
+/// Displays a border around a widget, with a title and a `*` when the widget is focused.
 pub struct Border {
     title: String,
     inner: Arc<RwLock<dyn Widget>>,
@@ -29,12 +33,7 @@ const BOTTOM_LEFT: char = '└';
 const BOTTOM_RIGHT: char = '┘';
 
 impl Widget for Border {
-    fn render(
-        &self,
-        layout: &crate::layout::Layout,
-        surface: &mut termwiz::surface::Surface,
-        focused: bool,
-    ) {
+    fn render(&self, layout: &crate::layout::Layout, surface: &mut Surface, focused: bool) {
         let (width, height) = surface.dimensions();
         let mut changes = vec![];
         changes.push(Change::Text(TOP_LEFT.to_string()));
@@ -110,8 +109,7 @@ impl Widget for Border {
             height: rect.height - 2.,
         };
 
-        if let Event::Input(termwiz::input::InputEvent::Mouse(MouseEvent { x, y, .. })) = &mut event
-        {
+        if let Event::Input(InputEvent::Mouse(MouseEvent { x, y, .. })) = &mut event {
             *x -= 2;
             *y -= 2;
         }

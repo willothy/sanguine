@@ -1,8 +1,6 @@
 use std::sync::{mpsc::Sender, Arc};
 
-use termwiz::surface::Surface;
-
-use crate::{layout::*, Event};
+use crate::{event::Event, layout::*, surface::Surface};
 
 /// The core widget trait that all widgets must implement.
 /// This trait provides the methods that the layout engine uses to interact with widgets.

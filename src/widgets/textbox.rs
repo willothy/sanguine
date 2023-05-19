@@ -1,9 +1,11 @@
-use termwiz::{
-    input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent},
-    surface::{Change, Position},
+use crate::{
+    error::Error,
+    error::Result,
+    event::{Event, InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent},
+    layout::Rect,
+    surface::{Change, Position, Surface},
+    widget::Widget,
 };
-
-use crate::{error::Result, layout::Rect, prelude::Error, widget::Widget, Event};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
@@ -11,6 +13,7 @@ pub struct Cursor {
     y: usize,
 }
 
+/// A simple editable textbox widget
 pub struct TextBox {
     buf: Vec<String>,
     cursor: Cursor,
@@ -116,12 +119,7 @@ impl TextBox {
 }
 
 impl Widget for TextBox {
-    fn render(
-        &self,
-        _layout: &crate::layout::Layout,
-        surface: &mut termwiz::surface::Surface,
-        _focused: bool,
-    ) {
+    fn render(&self, _layout: &crate::layout::Layout, surface: &mut Surface, _focused: bool) {
         let (width, height) = surface.dimensions();
         self.buf
             .iter()

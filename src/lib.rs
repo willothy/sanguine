@@ -89,50 +89,49 @@ use std::{
 };
 
 use error::{Error, Result};
+use event::*;
 use layout::*;
-use termwiz::{
-    caps::Capabilities,
-    input::{InputEvent, KeyEvent, Modifiers, MouseButtons, MouseEvent},
-    surface::{Change, Position, Surface},
-    terminal::Terminal,
-    terminal::{buffered::BufferedTerminal, UnixTerminal},
-};
+use surface::{term::*, *};
 pub use widget::Widget;
-
-/// Re-exports from termwiz relating to input and event handling
-pub mod input {
-    pub use termwiz::{input::InputEvent, input::KeyCode, input::KeyEvent, input::Modifiers};
-}
 
 /// Re-exports from termwiz relating to `termwiz::surface::Surface`
 pub mod surface {
-    pub use termwiz::surface::{Change, Position, Surface};
+    pub use termwiz::surface::{Change, CursorShape, CursorVisibility, Position, Surface};
     pub use termwiz::terminal::Terminal;
+
+    pub mod term {
+        pub use termwiz::caps::Capabilities;
+        pub use termwiz::terminal::{buffered::BufferedTerminal, UnixTerminal};
+    }
+}
+
+/// Types relating to input and event handling
+pub mod event {
+    pub use termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent};
+
+    /// An event that can be sent to a widget or handled by the global event handler.
+    #[derive(Debug)]
+    pub enum Event {
+        Input(InputEvent),
+        User(String),
+        Exit,
+    }
 }
 
 /// Commonly used types from Sanguine and termwiz
 pub mod prelude {
     pub use crate::error::*;
-    pub use crate::input::*;
+    pub use crate::event::*;
     pub use crate::layout::*;
-    pub use crate::surface::*;
-    pub use crate::widgets::border::Border;
-    pub use crate::widgets::textbox::TextBox;
-    pub use crate::*;
+    pub use crate::surface::{Change, Position, Surface, Terminal};
+    pub use crate::widgets::{Border, TextBox};
+    pub use crate::{App, Config};
 }
 
 pub mod error;
 pub mod layout;
 mod widget;
 pub mod widgets;
-
-/// An event that can be sent to a widget or handled by the global event handler.
-#[derive(Debug)]
-pub enum Event {
-    Input(InputEvent),
-    User(String),
-    Exit,
-}
 
 /// Contains configuration options for the Sanguine application.
 pub struct Config {
@@ -202,9 +201,8 @@ pub struct App {
 impl Drop for App {
     fn drop(&mut self) {
         // Restore cursor visibility and leave alternate screen when app exits
-        // self.term.add_change(Change::CursorVisibility(
-        //     termwiz::surface::CursorVisibility::Visible,
-        // ));
+        self.term
+            .add_change(Change::CursorVisibility(CursorVisibility::Visible));
         self.term.terminal().exit_alternate_screen().unwrap();
     }
 }
@@ -226,7 +224,7 @@ impl App {
     fn global_event(&mut self, event: &Event) -> Result<bool> {
         if self.config.ctrl_q_quit {
             if let Event::Input(InputEvent::Key(KeyEvent {
-                key: termwiz::input::KeyCode::Char('q'),
+                key: KeyCode::Char('q'),
                 modifiers: Modifiers::CTRL,
             })) = event
             {
@@ -444,7 +442,7 @@ impl App {
             let layout = self.layout.layout(focus).unwrap();
             if let Some(cursor) = self.layout.widget(focus).unwrap().read().unwrap().cursor() {
                 self.term.add_changes(vec![
-                    Change::CursorVisibility(termwiz::surface::CursorVisibility::Visible),
+                    Change::CursorVisibility(CursorVisibility::Visible),
                     Change::CursorPosition {
                         x: Position::Absolute(layout.x as usize + cursor.0),
                         y: Position::Absolute(layout.y as usize + cursor.1),
