@@ -81,6 +81,16 @@ impl Layout {
         }
     }
 
+    pub fn node_at_pos(&self, pos: (u16, u16)) -> Option<NodeId> {
+        self.leaves().into_iter().find(|v| {
+            let Some(rect) = self.layout(*v) else {
+                return false;
+            };
+
+            rect.contains(pos.0 as f32, pos.1 as f32)
+        })
+    }
+
     /// Returns nodes adjacent to the given node, along with the direction to get to them
     pub fn adjacent(&self, node: NodeId) -> HashMap<NodeId, Direction> {
         let mut map = HashMap::new();

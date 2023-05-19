@@ -85,13 +85,14 @@
 use std::{
     sync::{atomic::AtomicBool, mpsc::Sender, Arc, RwLock},
     time::Duration,
+    unreachable,
 };
 
 use error::{Error, Result};
 use layout::*;
 use termwiz::{
     caps::Capabilities,
-    input::{InputEvent, KeyEvent, Modifiers},
+    input::{InputEvent, KeyEvent, Modifiers, MouseButtons, MouseEvent},
     surface::{Change, Surface},
     terminal::Terminal,
     terminal::{buffered::BufferedTerminal, UnixTerminal},
@@ -210,8 +211,55 @@ impl App {
                 }
                 InputEvent::Wake => {}
                 InputEvent::PixelMouse(_event) => {}
-                InputEvent::Mouse(_) => {
-                    self.global_event(&event)?;
+                InputEvent::Mouse(MouseEvent {
+                    x,
+                    y,
+                    mouse_buttons,
+                    ..
+                }) => {
+                    if !self.global_event(&event)? {
+                        let Some(node) = self.layout.node_at_pos((*x, *y)) else {
+                            return Ok(());
+                        };
+                        if let Some(focus) = self.focus {
+                            if focus != node {
+                                if *mouse_buttons == MouseButtons::LEFT {
+                                    // If the node under the mouse is different from the focused node,
+                                    // unfocus the focused node and focus the new node
+                                    self.focus = Some(node);
+                                }
+                            } else {
+                                // If the node under the mouse is the same as the focused node,
+                                // send the event to the focused node
+                                let (widget, layout) = self.render_ctx(focus)?;
+
+                                let event = match event {
+                                    Event::Input(InputEvent::Mouse(MouseEvent {
+                                        x,
+                                        y,
+                                        mouse_buttons,
+                                        modifiers,
+                                    })) => Event::Input(InputEvent::Mouse(MouseEvent {
+                                        x: x - layout.x as u16,
+                                        y: y - layout.y as u16,
+                                        mouse_buttons,
+                                        modifiers,
+                                    })),
+                                    _ => unreachable!(),
+                                };
+
+                                widget
+                                    .write()
+                                    .map_err(|_| Error::WidgetWriteLockError(focus))?
+                                    .update(event, self.exit_tx.clone());
+                            }
+                        } else {
+                            if *mouse_buttons == MouseButtons::LEFT {
+                                // If there's no focus, focus the node under the mouse
+                                self.focus = Some(node);
+                            }
+                        }
+                    };
                 }
                 _ => {
                     // Handle global key events
