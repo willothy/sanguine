@@ -51,11 +51,13 @@
 //!
 //!     // Create the sanguine app, providing a handler for *global* input events.
 //!     // In this case, we only handle occurrences of Shift+Tab, which we use to cycle focus.
-//!     // If the Shift+Tab is pressed, we return true to signal that the event should not be
+//!     // If Shift+Tab is pressed, we return true to signal that the event should not be
 //!     // propagated.
-//!     let mut app = Sanguine::with_global_handler(
+//!     let mut app = App::with_global_handler(
 //!         layout,
-//!         |state: &mut Sanguine, event: &Event, _| {
+//!         // The default config is fine for this example
+//!         Config::default(),
+//!         |state: &mut App, event: &Event, _| {
 //!             if let Event::Input(InputEvent::Key(KeyEvent {
 //!                 key: KeyCode::Tab,
 //!                 modifiers: Modifiers::SHIFT,
@@ -71,7 +73,6 @@
 //!     // Only windows can be focused, attempting to focus a container will throw an error.
 //!     app.set_focus(left)?;
 //!
-//!     
 //!     // The main render loop, which will run until the user closes the application (defaults to Ctrl-q).
 //!     while app.handle_events()? {
 //!         app.render()?;

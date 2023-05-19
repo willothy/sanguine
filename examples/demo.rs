@@ -41,7 +41,7 @@ pub fn main() -> Result<()> {
 
     // Create the sanguine app, providing a handler for *global* input events.
     // In this case, we only handle occurrences of Shift+Tab, which we use to cycle focus.
-    // If the Shift+Tab is pressed, we return true to signal that the event should not be
+    // If Shift+Tab is pressed, we return true to signal that the event should not be
     // propagated.
     let mut app = App::with_global_handler(
         layout,
