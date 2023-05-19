@@ -16,6 +16,12 @@ pub struct TextBox {
     cursor: Cursor,
 }
 
+impl Default for TextBox {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextBox {
     pub fn new() -> Self {
         Self {

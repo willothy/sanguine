@@ -62,6 +62,12 @@ pub struct Layout {
     dirty: bool,
 }
 
+impl Default for Layout {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Layout {
     /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
@@ -309,7 +315,7 @@ impl Layout {
     fn compute_sizes(
         &mut self,
         bounds: &Rect,
-        sizes: &Vec<(NodeId, SizeHint)>,
+        sizes: &[(NodeId, SizeHint)],
         axis: &Axis,
     ) -> Vec<(NodeId, SizeHint)> {
         let mut new_sizes = Vec::new();
@@ -493,22 +499,16 @@ impl Layout {
     /// Sets the size hint for a container
     pub fn set_size(&mut self, node: NodeId, size: SizeHint) {
         self.dirty = true;
-        match self.nodes.get_mut(node) {
-            Some(LayoutNode::Container(container)) => {
-                container.size = Some(size);
-            }
-            _ => {}
+        if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(node) {
+            container.size = Some(size);
         }
     }
 
     /// Sets the direction of a container node.
     pub fn set_direction(&mut self, node: NodeId, axis: Axis) {
         self.dirty = true;
-        match self.nodes.get_mut(node) {
-            Some(LayoutNode::Container(container)) => {
-                container.direction = axis;
-            }
-            _ => {}
+        if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(node) {
+            container.direction = axis;
         }
     }
 
@@ -645,10 +645,7 @@ impl Layout {
 
     /// Checks if the given node is a leaf node.
     pub fn is_leaf(&self, node: NodeId) -> bool {
-        match self.nodes.get(node) {
-            Some(LayoutNode::Leaf(_)) => true,
-            _ => false,
-        }
+        matches!(self.nodes.get(node), Some(LayoutNode::Leaf(_)))
     }
 
     /// If the given node is a container, returns a reference to its children.

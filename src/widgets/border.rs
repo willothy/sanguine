@@ -110,20 +110,10 @@ impl Widget for Border {
             height: rect.height - 2.,
         };
 
-        match &mut event {
-            Event::Input(evt) => match evt {
-                termwiz::input::InputEvent::Mouse(MouseEvent {
-                    x,
-                    y,
-                    mouse_buttons: _,
-                    modifiers: _,
-                }) => {
-                    *x -= 2;
-                    *y -= 2;
-                }
-                _ => {}
-            },
-            _ => {}
+        if let Event::Input(termwiz::input::InputEvent::Mouse(MouseEvent { x, y, .. })) = &mut event
+        {
+            *x -= 2;
+            *y -= 2;
         }
 
         self.inner

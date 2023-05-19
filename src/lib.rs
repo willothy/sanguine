@@ -225,12 +225,12 @@ impl App {
 
     fn global_event(&mut self, event: &Event) -> Result<bool> {
         if self.config.ctrl_q_quit {
-            match event {
-                Event::Input(InputEvent::Key(KeyEvent {
-                    key: termwiz::input::KeyCode::Char('q'),
-                    modifiers: Modifiers::CTRL,
-                })) => self.exit_tx.send(()).map_err(|_| Error::SignalSendFail)?,
-                _ => {}
+            if let Event::Input(InputEvent::Key(KeyEvent {
+                key: termwiz::input::KeyCode::Char('q'),
+                modifiers: Modifiers::CTRL,
+            })) = event
+            {
+                self.exit_tx.send(()).map_err(|_| Error::SignalSendFail)?
             }
         }
 
