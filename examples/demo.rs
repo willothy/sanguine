@@ -45,11 +45,11 @@ pub fn main() -> Result<()> {
     // propagated.
     let mut app = Sanguine::with_global_handler(
         layout,
-        Box::new(move |state: &mut Sanguine, event: &InputEvent, _| {
-            if let InputEvent::Key(KeyEvent {
+        Box::new(move |state: &mut Sanguine, event: &Event, _| {
+            if let Event::Input(InputEvent::Key(KeyEvent {
                 key: KeyCode::Tab,
                 modifiers: Modifiers::SHIFT,
-            }) = event
+            })) = event
             {
                 state.cycle_focus()?;
                 return Ok(true);

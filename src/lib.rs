@@ -33,8 +33,7 @@ pub mod prelude {
     pub use crate::surface::*;
     pub use crate::widgets::border::Border;
     pub use crate::widgets::textbox::TextBox;
-    pub use crate::Sanguine;
-    pub use crate::Widget;
+    pub use crate::*;
 }
 
 pub mod error;
