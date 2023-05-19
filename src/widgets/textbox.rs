@@ -3,7 +3,7 @@ use termwiz::{
     surface::{Change, Position},
 };
 
-use crate::{layout::Rect, widget::Widget, Event};
+use crate::{error::Result, layout::Rect, prelude::Error, widget::Widget, Event};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cursor {
@@ -24,41 +24,61 @@ impl TextBox {
         }
     }
 
-    fn write_char(&mut self, c: char) {
-        let line = self.buf.get(self.cursor.y).unwrap();
+    fn write_char(&mut self, c: char) -> Result<()> {
+        let line = self
+            .buf
+            .get(self.cursor.y)
+            .ok_or(crate::error::Error::TerminalError)?;
         if self.cursor.x >= line.len() {
-            self.buf.get_mut(self.cursor.y).unwrap().push(c);
+            self.buf
+                .get_mut(self.cursor.y)
+                .ok_or(crate::error::Error::TerminalError)?
+                .push(c);
         } else {
             let mut new_line = String::new();
             new_line.push_str(&line[0..self.cursor.x]);
             new_line.push(c);
             new_line.push_str(&line[self.cursor.x..]);
-            *self.buf.get_mut(self.cursor.y).unwrap() = new_line;
+            *self
+                .buf
+                .get_mut(self.cursor.y)
+                .ok_or(crate::error::Error::TerminalError)? = new_line;
         }
         self.cursor.x += 1;
+        Ok(())
     }
 
-    fn delete(&mut self) {
+    fn delete(&mut self) -> Result<()> {
         // backspace
         if self.cursor.x == 0 && self.cursor.y == 0 {
-            return;
+            return Ok(());
         }
 
         if self.cursor.x == 0 {
             let line = self.buf.remove(self.cursor.y);
-            let prev_line = self.buf.get_mut(self.cursor.y - 1).unwrap();
+            let prev_line = self
+                .buf
+                .get_mut(self.cursor.y - 1)
+                .ok_or(crate::error::Error::TerminalError)?;
             let old_len = prev_line.len();
             prev_line.push_str(&line);
             self.cursor.y -= 1;
             self.cursor.x = old_len;
         } else {
-            let line = self.buf.get_mut(self.cursor.y).unwrap();
+            let line = self
+                .buf
+                .get_mut(self.cursor.y)
+                .ok_or(crate::error::Error::TerminalError)?;
             let mut new_line = String::new();
             new_line.push_str(&line[0..self.cursor.x - 1]);
             new_line.push_str(&line[self.cursor.x..]);
-            *self.buf.get_mut(self.cursor.y).unwrap() = new_line;
+            *self
+                .buf
+                .get_mut(self.cursor.y)
+                .ok_or(crate::error::Error::TerminalError)? = new_line;
             self.cursor.x -= 1;
         }
+        Ok(())
     }
 
     fn set_cursor_x(&mut self, x: usize) {
@@ -122,17 +142,26 @@ impl Widget for TextBox {
         layout: &Rect,
         event: Event,
         _: std::sync::Arc<std::sync::mpsc::Sender<()>>,
-    ) {
+    ) -> crate::error::Result<()> {
         match event {
             Event::Input(InputEvent::Key(KeyEvent { key, modifiers })) => {
                 if modifiers == Modifiers::NONE || modifiers == Modifiers::SHIFT {
                     match key {
-                        KeyCode::Char(c) => self.write_char(c),
+                        KeyCode::Char(c) => self.write_char(c)?,
                         KeyCode::Enter => {
-                            if self.cursor.x == self.buf.get(self.cursor.y).unwrap().len() {
+                            if self.cursor.x
+                                == self
+                                    .buf
+                                    .get(self.cursor.y)
+                                    .ok_or(Error::TerminalError)?
+                                    .len()
+                            {
                                 self.buf.insert(self.cursor.y + 1, String::new());
                             } else {
-                                let line = self.buf.get_mut(self.cursor.y).unwrap();
+                                let line = self
+                                    .buf
+                                    .get_mut(self.cursor.y)
+                                    .ok_or(Error::TerminalError)?;
                                 let new_line = line.drain(self.cursor.x..).collect::<String>();
 
                                 if self.cursor.y == self.buf.len() {
@@ -144,8 +173,8 @@ impl Widget for TextBox {
                             self.set_cursor(0, self.cursor.y + 1);
                         }
                         KeyCode::Tab => {
-                            self.write_char(' ');
-                            self.write_char(' ');
+                            self.write_char(' ')?;
+                            self.write_char(' ')?;
                         }
                         KeyCode::UpArrow => {
                             self.set_cursor_y(self.cursor.y.saturating_sub(1));
@@ -164,11 +193,12 @@ impl Widget for TextBox {
                             );
                         }
                         KeyCode::Backspace => {
-                            self.delete();
+                            self.delete()?;
                         }
                         _ => {}
                     }
                 }
+                Ok(())
             }
             Event::Input(InputEvent::Mouse(MouseEvent {
                 x,
@@ -179,8 +209,9 @@ impl Widget for TextBox {
                 if mouse_buttons == MouseButtons::LEFT {
                     self.set_cursor(x as usize, y as usize);
                 }
+                Ok(())
             }
-            _ => {}
+            _ => Ok(()),
         }
     }
 }

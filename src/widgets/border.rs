@@ -5,7 +5,7 @@ use termwiz::{
     surface::{Change, Position, Surface},
 };
 
-use crate::{layout::Rect, widget::Widget, Event};
+use crate::{layout::Rect, prelude::Error, widget::Widget, Event};
 
 pub struct Border {
     title: String,
@@ -97,7 +97,12 @@ impl Widget for Border {
             .map(|(x, y)| (x + 1, y + 1))
     }
 
-    fn update(&mut self, rect: &Rect, mut event: Event, exit_tx: Arc<Sender<()>>) {
+    fn update(
+        &mut self,
+        rect: &Rect,
+        mut event: Event,
+        exit_tx: Arc<Sender<()>>,
+    ) -> crate::error::Result<()> {
         let rect = Rect {
             x: rect.x + 1.,
             y: rect.y + 1.,
@@ -121,6 +126,10 @@ impl Widget for Border {
             _ => {}
         }
 
-        self.inner.write().unwrap().update(&rect, event, exit_tx);
+        self.inner
+            .write()
+            .map_err(|_| Error::external("could not lock widget"))?
+            .update(&rect, event, exit_tx)?;
+        Ok(())
     }
 }

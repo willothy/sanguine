@@ -256,7 +256,7 @@ impl App {
                             widget
                                 .write()
                                 .map_err(|_| Error::WidgetWriteLockError(focus))?
-                                .update(layout, event, self.exit_tx.clone());
+                                .update(layout, event, self.exit_tx.clone())?;
                         } else {
                             if *mouse_buttons == MouseButtons::LEFT {
                                 // If there's no focus, focus the node under the mouse
@@ -277,7 +277,7 @@ impl App {
                         widget
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
-                            .update(layout, event, self.exit_tx.clone());
+                            .update(layout, event, self.exit_tx.clone())?;
                     };
                 }
             },
@@ -294,7 +294,7 @@ impl App {
                     widget
                         .write()
                         .map_err(|_| Error::WidgetWriteLockError(focus))?
-                        .update(layout, event, self.exit_tx.clone());
+                        .update(layout, event, self.exit_tx.clone())?;
                 };
             }
         }
