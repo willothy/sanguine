@@ -206,8 +206,11 @@ impl App {
         match &event {
             Event::Input(input_event) => match &input_event {
                 InputEvent::Resized { cols, rows } => {
-                    self.size.width = *cols as f32;
-                    self.size.height = *rows as f32;
+                    self.size = Rect::from_size((*cols, *rows));
+                    self.term.resize(*cols, *rows);
+                    self.term.repaint().map_err(|_| Error::TerminalError)?;
+                    self.term.flush().map_err(|_| Error::TerminalError)?;
+                    self.layout.mark_dirty();
                 }
                 InputEvent::Wake => {}
                 InputEvent::PixelMouse(_event) => {}

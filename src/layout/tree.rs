@@ -235,6 +235,10 @@ impl Layout {
         }
     }
 
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
     /// Recursively computes the layout of the tree.
     fn compute_tree(&mut self, node: Option<NodeId>, bounds: &Rect) {
         let node = node.unwrap_or(self.root());
