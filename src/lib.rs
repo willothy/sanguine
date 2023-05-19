@@ -93,7 +93,7 @@ use layout::*;
 use termwiz::{
     caps::Capabilities,
     input::{InputEvent, KeyEvent, Modifiers, MouseButtons, MouseEvent},
-    surface::{Change, Surface},
+    surface::Surface,
     terminal::Terminal,
     terminal::{buffered::BufferedTerminal, UnixTerminal},
 };
@@ -162,9 +162,9 @@ pub struct App {
 impl Drop for App {
     fn drop(&mut self) {
         // Restore cursor visibility and leave alternate screen when app exits
-        self.term.add_change(Change::CursorVisibility(
-            termwiz::surface::CursorVisibility::Visible,
-        ));
+        // self.term.add_change(Change::CursorVisibility(
+        //     termwiz::surface::CursorVisibility::Visible,
+        // ));
         self.term.terminal().exit_alternate_screen().unwrap();
     }
 }
@@ -438,7 +438,7 @@ impl App {
 
     /// Create a new Sanguine application with the provided layout and no global event handler.
     pub fn new(layout: Layout) -> Result<Self> {
-        let mut term = Capabilities::new_from_env()
+        let term = Capabilities::new_from_env()
             .and_then(|caps| {
                 UnixTerminal::new(caps).and_then(|mut t| {
                     t.set_raw_mode()?;
@@ -447,24 +447,17 @@ impl App {
                 })
             })
             .map_err(|_| Error::TerminalError)?;
-
-        term.add_change(Change::CursorVisibility(
-            termwiz::surface::CursorVisibility::Hidden,
-        ));
         let (exit_tx, exit_rx) = std::sync::mpsc::channel();
 
         Ok(App {
             global_event_handler: Box::new(|_, _, _| Ok(false)),
+            size: Rect::from_size(term.dimensions()),
+            exit_tx: Arc::new(exit_tx),
+            exit: AtomicBool::new(false),
             focus: None,
-            size: {
-                let t = term.dimensions();
-                Rect::from_size(t.0, t.1)
-            },
             layout,
             term,
-            exit_tx: Arc::new(exit_tx),
             exit_rx,
-            exit: AtomicBool::new(false),
             ctrl_q_quit: true,
         })
     }

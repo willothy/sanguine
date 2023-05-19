@@ -52,10 +52,10 @@ impl Rect {
         self.y + self.height
     }
 
-    pub fn from_size(width: usize, height: usize) -> Rect {
+    pub fn from_size(dims: (usize, usize)) -> Rect {
         Rect {
-            width: width as f32,
-            height: height as f32,
+            width: dims.0 as f32,
+            height: dims.1 as f32,
             ..Default::default()
         }
     }
