@@ -394,15 +394,12 @@ impl App {
             let Ok(widget) = widget.read() else {
                 return
             };
-            self.focus
-                .and_then(|focus| {
-                    widget.render(&self.layout, &mut widget_screen, node == focus);
-                    Some(())
-                })
-                .or_else(|| {
-                    widget.render(&self.layout, &mut widget_screen, false);
-                    Some(())
-                });
+
+            if let Some(focus) = self.focus {
+                widget.render(&self.layout, &mut widget_screen, node == focus);
+            } else {
+                widget.render(&self.layout, &mut widget_screen, false);
+            }
 
             // Draw widget onto background screen
             screen.draw_from_screen(&widget_screen, layout.x as usize, layout.y as usize);
