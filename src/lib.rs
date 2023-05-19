@@ -316,7 +316,7 @@ impl App {
         while let Some(event) = self
             .term
             .terminal()
-            .poll_input(Some(Duration::from_millis(2)))
+            .poll_input(Some(Duration::from_millis(5)))
             .map_err(|_| Error::PollInputFailed)?
         {
             self.process_event(Event::Input(event))?;
