@@ -15,6 +15,14 @@ Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 
 ## Demo
 
+
+
+https://github.com/willothy/sanguine/assets/38540736/ccaeff03-fa50-4d4f-b070-f94d8e212097
+
+
+
+### Usage
+
 ```sh
 
 $ git clone git@github.com:willothy/sanguine.git
