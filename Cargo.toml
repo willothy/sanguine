@@ -1,8 +1,8 @@
 [package]
 name = "sanguine"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
-authors = ["Will Hopkins <willothyh@gmail.com"]
+authors = ["Will Hopkins <willothyh@gmail.com>"]
 description = "A library for creating dynamic TUI experiences in Rust"
 repository = "https://github.com/willothy/sanguine"
 license = "MIT"
