@@ -51,6 +51,14 @@ impl Rect {
     pub fn bottom(&self) -> f32 {
         self.y + self.height
     }
+
+    pub fn from_size(width: usize, height: usize) -> Rect {
+        Rect {
+            width: width as f32,
+            height: height as f32,
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for Rect {

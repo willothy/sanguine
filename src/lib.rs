@@ -1,7 +1,11 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
-use anyhow::Result;
-use layout::{geometry::Rect, tree::Layout};
+use anyhow::{anyhow, Result};
+use layout::{
+    geometry::Rect,
+    tree::{Layout, NodeId},
+};
+use prelude::Widget;
 use termwiz::{
     caps::Capabilities,
     input::InputEvent,
@@ -79,6 +83,19 @@ impl Sanguine {
         f(&self.layout)
     }
 
+    fn render_ctx(&self, node: NodeId) -> Result<(Arc<dyn Widget>, &Rect)> {
+        Ok((
+            // Retrieve widget trait object from node
+            self.layout
+                .widget(node)
+                .ok_or(anyhow!("Could not find widget"))?,
+            // Retrieve computed layout for window
+            self.layout
+                .layout(node)
+                .ok_or(anyhow!("Could not find layout"))?,
+        ))
+    }
+
     pub fn render(&mut self) -> Result<()> {
         self.layout.compute(&self.size);
 
@@ -86,15 +103,20 @@ impl Sanguine {
         let mut screen = Surface::new(self.size.width as usize, self.size.height as usize);
 
         // Retrieve leaves (windows) from layout
-        let leaves = self.layout.leaves();
+        self.layout.leaves().for_each(|node| {
+            let (widget, layout) = self.render_ctx(node).unwrap();
 
-        leaves.iter().for_each(|id| {
-            // Retrieve computed layout for window
-            let layout = self.layout.layout(*id).unwrap();
-            // Retrieve widget trait object from node
-            let widget = self.layout.widget(*id).unwrap();
-            // Draw onto temporary background screen
-            widget.render(&self.layout, layout.clone(), &mut screen);
+            // Draw onto widget screen for composition
+            let mut widget_screen = Surface::new(layout.width as usize, layout.height as usize);
+
+            // Remove x/y offset for widget-local layout
+            let widget_layout = Rect::from_size(layout.width as usize, layout.height as usize);
+
+            // Render widget onto widget screen
+            widget.render(&self.layout, widget_layout, &mut widget_screen);
+
+            // Draw widget onto background screen
+            screen.draw_from_screen(&widget_screen, layout.x as usize, layout.y as usize);
         });
 
         // Draw contents of background screen to terminal

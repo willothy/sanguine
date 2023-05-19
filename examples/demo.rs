@@ -241,7 +241,7 @@ pub fn main() -> Result<()> {
 
     for _ in 0..10 {
         // let parent = s.inspect_layout(|l| l.parent(new2)).unwrap();
-        let leaves = s.inspect_layout(|l| l.leaves());
+        let leaves = s.inspect_layout(|l| l.leaves().collect::<Vec<_>>());
         let between = 0..leaves.len();
         let mut rng = rand::thread_rng();
         let idx = between.sample_single(&mut rng);

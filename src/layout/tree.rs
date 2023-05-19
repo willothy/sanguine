@@ -397,12 +397,12 @@ impl Layout {
     }
 
     /// Get the leaves of the layout tree
-    pub fn leaves(&self) -> Vec<NodeId> {
+    pub fn leaves(&self) -> impl Iterator<Item = NodeId> {
         let mut leaves = vec![];
 
         self.leaves_inner(self.root, &mut leaves);
 
-        leaves
+        leaves.into_iter()
     }
 
     /// Traverse the layout tree
