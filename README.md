@@ -10,10 +10,9 @@ Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 
 ## Goals:
 
-- [x] Horizontal and vertical splits
+- [x] Tree-based layout
 - [x] Global keyboard events
 - [x] Extensible widget trait
-- [x] Conventient layout primitives
 - [x] Focus
 - [x] Focused-widget keyboard events
 - [ ] Mouse events
