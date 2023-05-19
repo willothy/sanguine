@@ -71,6 +71,8 @@
 //!     // Only windows can be focused, attempting to focus a container will throw an error.
 //!     app.set_focus(left)?;
 //!
+//!     
+//!     // The main render loop, which will run until the user closes the application (defaults to Ctrl-q).
 //!     while app.handle_events()? {
 //!         app.render()?;
 //!     }
