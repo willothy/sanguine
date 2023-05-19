@@ -1,4 +1,6 @@
-//! # Sanguine is a library for building terminal applications in Rust.
+//! # Sanguine
+//!
+//! A library for building terminal applications in Rust.
 //!
 //! Sanguine provides a layout engine and a set of widgets that can be used to build dynamic,
 //! layout-based applications such as text editors and other complex tui applications.
