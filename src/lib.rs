@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, RwLock},
+};
 
 use anyhow::{anyhow, Result};
 use layout::{
@@ -34,6 +37,7 @@ pub struct Sanguine {
     event_queue: VecDeque<Event>,
     term: BufferedTerminal<UnixTerminal>,
     size: Rect,
+    focus: Option<NodeId>,
 }
 
 impl Drop for Sanguine {
@@ -64,6 +68,7 @@ impl Sanguine {
             },
             layout,
             term,
+            focus: None,
         })
     }
 
@@ -83,7 +88,7 @@ impl Sanguine {
         f(&self.layout)
     }
 
-    fn render_ctx(&self, node: NodeId) -> Result<(Arc<dyn Widget>, &Rect)> {
+    fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget>>, &Rect)> {
         Ok((
             // Retrieve widget trait object from node
             self.layout
@@ -96,6 +101,38 @@ impl Sanguine {
         ))
     }
 
+    pub fn process_event(&mut self, event: InputEvent) -> Result<()> {
+        match event {
+            InputEvent::Resized { cols, rows } => {
+                self.size.width = cols as f32;
+                self.size.height = rows as f32;
+            }
+            InputEvent::Mouse(_event) => {}
+            InputEvent::Wake => {}
+            InputEvent::PixelMouse(_event) => {}
+            event => {
+                let widget = self
+                    .focus
+                    .and_then(|node| self.layout.widget(node))
+                    .ok_or(anyhow!("Could not find widget"))?;
+                widget.write().unwrap().update(event);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_focus(&mut self, node: NodeId) -> Result<()> {
+        if !self.layout.is_leaf(node) {
+            return Err(anyhow!("Node is not a leaf"));
+        }
+        self.focus = Some(node);
+        Ok(())
+    }
+
+    pub fn get_focus(&self) -> Option<NodeId> {
+        self.focus
+    }
+
     pub fn render(&mut self) -> Result<()> {
         self.layout.compute(&self.size);
 
@@ -104,7 +141,11 @@ impl Sanguine {
 
         // Retrieve leaves (windows) from layout
         self.layout.leaves().for_each(|node| {
-            let (widget, layout) = self.render_ctx(node).unwrap();
+            let Ok((widget, layout)) = self.render_ctx(node) else {
+                // Do nothing if widget or layout is missing
+                // TODO: Log error
+                return;
+            };
 
             // Draw onto widget screen for composition
             let mut widget_screen = Surface::new(layout.width as usize, layout.height as usize);
@@ -113,6 +154,9 @@ impl Sanguine {
             let widget_layout = Rect::from_size(layout.width as usize, layout.height as usize);
 
             // Render widget onto widget screen
+            let Ok(widget) = widget.read() else {
+                return
+            };
             widget.render(&self.layout, widget_layout, &mut widget_screen);
 
             // Draw widget onto background screen

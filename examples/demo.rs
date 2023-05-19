@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use rand::distributions::uniform::SampleRange;
 use sanguine::prelude::{Axis, Layout, Rect, Sanguine, SizeHint, Widget};
@@ -218,10 +216,10 @@ type B = IndBorder;
 pub fn main() -> Result<()> {
     let mut layout = Layout::new();
 
-    let left = layout.add_leaf(Arc::new(B::new()));
+    let left = layout.add_leaf(B::new());
     // let right = layout.add_leaf(Leaf::new(Arc::new(B::new())));
-    let top_right = layout.add_leaf(Arc::new(B::new()));
-    let bot_right = layout.add_leaf(Arc::new(B::new()));
+    let top_right = layout.add_leaf(B::new());
+    let bot_right = layout.add_leaf(B::new());
     let right = layout.add_with_children(
         Axis::Vertical,
         Some(SizeHint::fill()),
@@ -254,7 +252,7 @@ pub fn main() -> Result<()> {
                 } else {
                     Axis::Horizontal
                 },
-                Arc::new(B::new()),
+                B::new(),
             )
         });
         s.render()?;

@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+};
 
 use slotmap::DefaultKey;
 
@@ -8,14 +11,14 @@ use crate::widget::Widget;
 pub type NodeId = DefaultKey;
 
 pub struct Leaf {
-    widget: Arc<dyn Widget>,
+    widget: Arc<RwLock<dyn Widget>>,
     parent: Option<NodeId>,
 }
 
 impl Leaf {
-    pub fn new(widget: Arc<dyn Widget>) -> Self {
+    pub fn new(widget: impl Widget + 'static) -> Self {
         Self {
-            widget,
+            widget: Arc::new(RwLock::new(widget)),
             parent: None,
         }
     }
@@ -369,7 +372,7 @@ impl Layout {
             Some(LayoutNode::Container(container)) => {
                 container.size.clone().unwrap_or(SizeHint::Fill)
             }
-            Some(LayoutNode::Leaf(leaf)) => leaf.widget.size_hint(),
+            Some(LayoutNode::Leaf(leaf)) => leaf.widget.read().unwrap().size_hint(),
             None => SizeHint::Fill,
         }
     }
@@ -515,7 +518,7 @@ impl Layout {
     }
 
     /// Adds a new leaf node to the layout.
-    pub fn add_leaf(&mut self, widget: Arc<dyn Widget>) -> NodeId {
+    pub fn add_leaf(&mut self, widget: impl Widget + 'static) -> NodeId {
         self.dirty = true;
         let node = LayoutNode::Leaf(Leaf::new(widget));
         let id = self.nodes.insert(node);
@@ -631,7 +634,7 @@ impl Layout {
     }
 
     /// If the given node is a leaf, returns a Arc pointing to its widget.
-    pub fn widget(&self, node: NodeId) -> Option<Arc<dyn Widget>> {
+    pub fn widget(&self, node: NodeId) -> Option<Arc<RwLock<dyn Widget>>> {
         match self.nodes.get(node) {
             Some(LayoutNode::Leaf(leaf)) => Some(leaf.widget.clone()),
             _ => None,
@@ -674,7 +677,12 @@ impl Layout {
     ///
     /// If the node is a leaf, it will be replaced by a container, which will contain it and the
     /// newly created node.
-    pub fn split(&mut self, node: NodeId, direction: Axis, widget: Arc<dyn Widget>) -> NodeId {
+    pub fn split(
+        &mut self,
+        node: NodeId,
+        direction: Axis,
+        widget: impl Widget + 'static,
+    ) -> NodeId {
         self.dirty = true;
         if self.is_leaf(node) {
             let new = self.add_container(direction, None);
