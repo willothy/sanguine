@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use crate::{
     error::Error,
     error::Result,
@@ -15,7 +17,7 @@ pub struct Cursor {
 
 /// A simple editable textbox widget
 pub struct TextBox {
-    buf: Vec<String>,
+    buf: Arc<RwLock<Vec<String>>>,
     cursor: Cursor,
 }
 
@@ -28,18 +30,22 @@ impl Default for TextBox {
 impl TextBox {
     pub fn new() -> Self {
         Self {
-            buf: vec![String::new()],
+            buf: Arc::new(RwLock::new(vec![String::new()])),
             cursor: Cursor { x: 0, y: 0 },
         }
     }
 
+    pub fn buffer(&self) -> Arc<RwLock<Vec<String>>> {
+        self.buf.clone()
+    }
+
     fn write_char(&mut self, c: char) -> Result<()> {
-        let line = self
-            .buf
+        let mut writer = self.buf.write().unwrap();
+        let line = writer
             .get(self.cursor.y)
             .ok_or(crate::error::Error::TerminalError)?;
         if self.cursor.x >= line.len() {
-            self.buf
+            writer
                 .get_mut(self.cursor.y)
                 .ok_or(crate::error::Error::TerminalError)?
                 .push(c);
@@ -48,8 +54,7 @@ impl TextBox {
             new_line.push_str(&line[0..self.cursor.x]);
             new_line.push(c);
             new_line.push_str(&line[self.cursor.x..]);
-            *self
-                .buf
+            *writer
                 .get_mut(self.cursor.y)
                 .ok_or(crate::error::Error::TerminalError)? = new_line;
         }
@@ -64,9 +69,9 @@ impl TextBox {
         }
 
         if self.cursor.x == 0 {
-            let line = self.buf.remove(self.cursor.y);
-            let prev_line = self
-                .buf
+            let mut writer = self.buf.write().unwrap();
+            let line = writer.remove(self.cursor.y);
+            let prev_line = writer
                 .get_mut(self.cursor.y - 1)
                 .ok_or(crate::error::Error::TerminalError)?;
             let old_len = prev_line.len();
@@ -74,15 +79,14 @@ impl TextBox {
             self.cursor.y -= 1;
             self.cursor.x = old_len;
         } else {
-            let line = self
-                .buf
+            let mut writer = self.buf.write().unwrap();
+            let line = writer
                 .get_mut(self.cursor.y)
                 .ok_or(crate::error::Error::TerminalError)?;
             let mut new_line = String::new();
             new_line.push_str(&line[0..self.cursor.x - 1]);
             new_line.push_str(&line[self.cursor.x..]);
-            *self
-                .buf
+            *writer
                 .get_mut(self.cursor.y)
                 .ok_or(crate::error::Error::TerminalError)? = new_line;
             self.cursor.x -= 1;
@@ -91,7 +95,13 @@ impl TextBox {
     }
 
     fn set_cursor_x(&mut self, x: usize) {
-        let line = self.buf.get(self.cursor.y).map(|l| l.len()).unwrap_or(0);
+        let line = self
+            .buf
+            .read()
+            .unwrap()
+            .get(self.cursor.y)
+            .map(|l| l.len())
+            .unwrap_or(0);
         if x >= line {
             self.cursor.x = line;
         } else {
@@ -100,13 +110,19 @@ impl TextBox {
     }
 
     fn set_cursor_y(&mut self, y: usize) {
-        let nlines = self.buf.len();
+        let nlines = self.buf.read().unwrap().len();
         if y >= nlines {
             self.cursor.y = nlines - 1;
         } else {
             self.cursor.y = y;
         }
-        let len = self.buf.get(self.cursor.y).map(|l| l.len()).unwrap_or(0);
+        let len = self
+            .buf
+            .read()
+            .unwrap()
+            .get(self.cursor.y)
+            .map(|l| l.len())
+            .unwrap_or(0);
         if self.cursor.x > len {
             self.cursor.x = len;
         }
@@ -122,6 +138,8 @@ impl Widget for TextBox {
     fn render(&self, _layout: &crate::layout::Layout, surface: &mut Surface, _focused: bool) {
         let (width, height) = surface.dimensions();
         self.buf
+            .read()
+            .unwrap()
             .iter()
             .map(|l| &l[0..width.min(l.len())])
             .enumerate()
@@ -156,22 +174,26 @@ impl Widget for TextBox {
                             if self.cursor.x
                                 == self
                                     .buf
+                                    .write()
+                                    .unwrap()
                                     .get(self.cursor.y)
                                     .ok_or(Error::TerminalError)?
                                     .len()
                             {
-                                self.buf.insert(self.cursor.y + 1, String::new());
+                                self.buf
+                                    .write()
+                                    .unwrap()
+                                    .insert(self.cursor.y + 1, String::new());
                             } else {
-                                let line = self
-                                    .buf
-                                    .get_mut(self.cursor.y)
-                                    .ok_or(Error::TerminalError)?;
+                                let mut writer = self.buf.write().unwrap();
+                                let line =
+                                    writer.get_mut(self.cursor.y).ok_or(Error::TerminalError)?;
                                 let new_line = line.drain(self.cursor.x..).collect::<String>();
 
-                                if self.cursor.y == self.buf.len() {
-                                    self.buf.push(new_line);
+                                if self.cursor.y == writer.len() {
+                                    writer.push(new_line);
                                 } else {
-                                    self.buf.insert(self.cursor.y + 1, new_line);
+                                    writer.insert(self.cursor.y + 1, new_line);
                                 }
                             }
                             self.set_cursor(0, self.cursor.y + 1);
