@@ -451,6 +451,9 @@ impl App {
                         y: Position::Absolute(layout.y as usize + cursor.1),
                     },
                 ]);
+            } else {
+                self.term
+                    .add_changes(vec![Change::CursorVisibility(CursorVisibility::Hidden)]);
             }
         }
 
