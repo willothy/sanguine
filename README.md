@@ -15,7 +15,11 @@ Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 
 ## Demo
 
-https://github.com/willothy/sanguine/assets/38540736/ccaeff03-fa50-4d4f-b070-f94d8e212097
+<!-- https://github.com/willothy/sanguine/assets/38540736/ccaeff03-fa50-4d4f-b070-f94d8e212097 -->
+
+https://github.com/willothy/sanguine/assets/38540736/61a2ff5d-8284-437b-b31a-24045d133f3f
+
+
 
 ### Usage
 
