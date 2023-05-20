@@ -98,8 +98,8 @@ impl Layout {
     }
 
     /// Returns nodes adjacent to the given node, along with the direction to get to them
-    pub fn adjacent(&self, node: NodeId) -> HashMap<NodeId, Direction> {
-        let mut map = HashMap::new();
+    pub fn adjacent(&self, node: NodeId) -> Vec<(NodeId, Direction)> {
+        let mut map = Vec::new();
         let parent = self.parent(node).unwrap();
         let direction = self.direction(parent).unwrap();
         let children = self.children(parent).unwrap();
@@ -107,48 +107,48 @@ impl Layout {
         if index > 0 {
             let node = children[index - 1];
             if self.is_leaf(node) {
-                map.insert(
+                map.push((
                     node,
                     match direction {
                         Axis::Vertical => Direction::Up,
                         Axis::Horizontal => Direction::Left,
                     },
-                );
+                ));
             } else {
                 let direction = self.direction(node).unwrap();
                 let children = self.children(node).unwrap();
                 children.iter().for_each(|id| {
-                    map.insert(
+                    map.push((
                         *id,
                         match direction {
                             Axis::Vertical => Direction::Up,
                             Axis::Horizontal => Direction::Left,
                         },
-                    );
+                    ));
                 });
             }
         }
         if index < children.len() - 1 {
             let node = children[index + 1];
             if self.is_leaf(node) {
-                map.insert(
+                map.push((
                     node,
                     match direction {
                         Axis::Vertical => Direction::Down,
                         Axis::Horizontal => Direction::Right,
                     },
-                );
+                ));
             } else {
                 let direction = self.direction(node).unwrap();
                 let children = self.children(node).unwrap();
                 children.iter().for_each(|id| {
-                    map.insert(
+                    map.push((
                         *id,
                         match direction {
                             Axis::Vertical => Direction::Right,
                             Axis::Horizontal => Direction::Down,
                         },
-                    );
+                    ));
                 });
             }
         }
@@ -161,13 +161,13 @@ impl Layout {
                 if *id == parent {
                     return;
                 }
-                map.insert(
+                map.push((
                     *id,
                     match direction {
                         Axis::Vertical => Direction::Down,
                         Axis::Horizontal => Direction::Left,
                     },
-                );
+                ));
             });
         }
 
@@ -750,5 +750,61 @@ impl Layout {
                 node
             }
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use crate::{
+        layout::{Axis, SizeHint},
+        widgets::{Border, TextBox},
+    };
+
+    use super::Layout;
+
+    #[test]
+    fn adjacent() {
+        // Create the layout struct
+        let mut layout = Layout::new();
+
+        // Create a TextBox widget, wrapped by a Border widget
+        let editor_1 = Border::new("textbox 1".to_owned(), TextBox::new());
+
+        // Add the first editor to the layout
+        let left = layout.add_leaf(editor_1);
+
+        // Add the menu widget
+        let top_right = layout.clone_leaf(left);
+
+        // Clone the first editor to add it to the layout again
+        // This widget will be *shared* between the two windows, meaning that changes to the underlying
+        // buffer will be shown in both windows and focusing on either window will allow you to edit
+        // the same buffer.
+        let bot_right = layout.clone_leaf(left);
+
+        // Add the second editor to the layout
+        // let bot_right = layout.add_leaf(editor_2);
+
+        // Create a container to hold the two right hand side editors
+        let right = layout.add_with_children(
+            // The container will be a vertical layout
+            Axis::Vertical,
+            // The container will take up all available space
+            Some(SizeHint::fill()),
+            // The container will contain the cloned first editor, and the second editor
+            [top_right, bot_right],
+        );
+
+        // Get the root node of the layout
+        let root = layout.root();
+        // Ensure that the root container is laid out horizontally
+        layout.set_direction(root, Axis::Horizontal);
+
+        // Add the left window (leaf) and the right container to the root
+        layout.add_child(root, left);
+        layout.add_child(root, right);
+
+        let adjacent = layout.adjacent(left);
+        assert!(false, "{adjacent:?}");
     }
 }

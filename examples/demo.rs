@@ -1,4 +1,7 @@
-use std::sync::{mpsc::Sender, Arc};
+use std::{
+    sync::{mpsc::Sender, Arc},
+    unreachable,
+};
 
 use sanguine::{prelude::*, Widget};
 use termwiz::{
@@ -177,13 +180,33 @@ pub fn main() -> Result<()> {
         // The default config is fine for this example
         Config::default(),
         |state: &mut App, event: &Event, _| {
-            if let Event::Input(InputEvent::Key(KeyEvent {
-                key: KeyCode::Tab,
-                modifiers: Modifiers::SHIFT,
-            })) = event
-            {
-                state.cycle_focus()?;
-                return Ok(true);
+            match event {
+                Event::Input(InputEvent::Key(KeyEvent {
+                    key: KeyCode::Tab,
+                    modifiers: Modifiers::SHIFT,
+                })) => {
+                    state.cycle_focus()?;
+                    return Ok(true);
+                }
+                Event::Input(InputEvent::Key(KeyEvent {
+                    key:
+                        k @ (KeyCode::UpArrow
+                        | KeyCode::DownArrow
+                        | KeyCode::LeftArrow
+                        | KeyCode::RightArrow),
+                    modifiers: Modifiers::SHIFT,
+                })) => {
+                    let dir = match k {
+                        KeyCode::UpArrow => Direction::Up,
+                        KeyCode::DownArrow => Direction::Down,
+                        KeyCode::LeftArrow => Direction::Left,
+                        KeyCode::RightArrow => Direction::Right,
+                        _ => unreachable!(),
+                    };
+                    state.focus_direction(dir)?;
+                    return Ok(true);
+                }
+                _ => (),
             }
             Ok(false)
         },

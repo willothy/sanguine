@@ -405,6 +405,31 @@ impl App {
         self.focus
     }
 
+    /// Cycle focus to the next window
+    pub fn cycle_focus(&mut self) -> Result<()> {
+        let current = self.get_focus().ok_or(Error::NoFocus)?;
+        let next = self.inspect_layout(|l| {
+            l.leaves()
+                .into_iter()
+                .cycle()
+                .skip_while(|v| *v != current)
+                .nth(1)
+                .ok_or(Error::NoFocus)
+        })?;
+        self.set_focus(next)?;
+        Ok(())
+    }
+
+    pub fn focus_direction(&mut self, direction: Direction) -> Result<()> {
+        let current = self.get_focus().ok_or(Error::NoFocus)?;
+        let available = self.inspect_layout(|l| l.adjacent_on_side(current, direction));
+        let Some(next) = available.iter().next() else {
+            return Ok(());
+        };
+        self.set_focus(*next)?;
+        Ok(())
+    }
+
     /// Render the entire application to the terminal
     pub fn render(&mut self) -> Result<()> {
         self.layout.compute(&self.size);
@@ -460,21 +485,6 @@ impl App {
         // Compute optimized diff and flush
         self.term.flush().map_err(|_| Error::TerminalError)?;
 
-        Ok(())
-    }
-
-    /// Cycle focus to the next window
-    pub fn cycle_focus(&mut self) -> Result<()> {
-        let current = self.get_focus().ok_or(Error::NoFocus)?;
-        let next = self.inspect_layout(|l| {
-            l.leaves()
-                .into_iter()
-                .cycle()
-                .skip_while(|v| *v != current)
-                .nth(1)
-                .ok_or(Error::NoFocus)
-        })?;
-        self.set_focus(next)?;
         Ok(())
     }
 

@@ -15,11 +15,7 @@ Built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`.
 
 ## Demo
 
-
-
 https://github.com/willothy/sanguine/assets/38540736/ccaeff03-fa50-4d4f-b070-f94d8e212097
-
-
 
 ### Usage
 
@@ -35,5 +31,11 @@ $ cargo run --example demo
 
 ### Demo keymaps:
 
-- `<C-q>`: quit
-- `<S-Tab>`: switch window
+- <kbd>Control</kbd> + <kbd>q</kbd>: Quit
+- <kbd>Shift</kbd> + <kbd>Tab</kbd>: Cycle focus
+- <kbd>Shift</kbd> + <kbd>Up/Down/Left/Right</kbd>: Switch focus by direction
+
+Menu:
+
+- <kbd>Up/Down/Left/Right</kbd>: Switch menu item
+- <kbd>Enter</kbd>: Select menu item
