@@ -12,13 +12,13 @@ new_key_type! {
     pub struct NodeId;
 }
 
-pub struct Leaf {
-    widget: Arc<RwLock<dyn Widget>>,
+pub struct Leaf<U> {
+    widget: Arc<RwLock<dyn Widget<U>>>,
     parent: Option<NodeId>,
 }
 
-impl Leaf {
-    pub fn new(widget: impl Widget + 'static) -> Self {
+impl<U> Leaf<U> {
+    pub fn new(widget: impl Widget<U> + 'static) -> Self {
         Self {
             widget: Arc::new(RwLock::new(widget)),
             parent: None,
@@ -26,7 +26,7 @@ impl Leaf {
     }
 }
 
-impl Clone for Leaf {
+impl<U> Clone for Leaf<U> {
     fn clone(&self) -> Self {
         Self {
             widget: self.widget.clone(),
@@ -45,14 +45,14 @@ pub struct Container {
     parent: Option<NodeId>,
 }
 
-pub enum LayoutNode {
+pub enum LayoutNode<U> {
     Container(Container),
-    Leaf(Leaf),
+    Leaf(Leaf<U>),
 }
 
-pub struct Layout {
+pub struct Layout<U> {
     /// The arena containing all nodes, keyed by unique id.
-    nodes: slotmap::SlotMap<NodeId, LayoutNode>,
+    nodes: slotmap::SlotMap<NodeId, LayoutNode<U>>,
     /// Render results. Will be stale or zeroed if `Layout::compute()` isn't called after each
     /// change.
     layout: HashMap<NodeId, Rect>,
@@ -62,13 +62,13 @@ pub struct Layout {
     dirty: bool,
 }
 
-impl Default for Layout {
+impl<U> Default for Layout<U> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Layout {
+impl<U> Layout<U> {
     /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
         let mut nodes = slotmap::SlotMap::with_key();
@@ -440,12 +440,12 @@ impl Layout {
     }
 
     /// Traverse the layout tree
-    pub fn traverse(&self, mut f: impl FnMut(NodeId, &LayoutNode)) {
+    pub fn traverse(&self, mut f: impl FnMut(NodeId, &LayoutNode<U>)) {
         self.traverse_recursive(self.root, &mut f);
     }
 
     /// Recursive traversal helper
-    fn traverse_recursive(&self, node_id: NodeId, f: &mut impl FnMut(NodeId, &LayoutNode)) {
+    fn traverse_recursive(&self, node_id: NodeId, f: &mut impl FnMut(NodeId, &LayoutNode<U>)) {
         let node = self.nodes.get(node_id).unwrap();
         f(node_id, node);
         match node {
@@ -543,7 +543,7 @@ impl Layout {
     }
 
     /// Adds a new leaf node to the layout.
-    pub fn add_leaf(&mut self, widget: impl Widget + 'static) -> NodeId {
+    pub fn add_leaf(&mut self, widget: impl Widget<U> + 'static) -> NodeId {
         self.dirty = true;
         let node = LayoutNode::Leaf(Leaf::new(widget));
         let id = self.nodes.insert(node);
@@ -673,7 +673,7 @@ impl Layout {
     }
 
     /// If the given node is a leaf, returns a Arc pointing to its widget.
-    pub fn widget(&self, node: NodeId) -> Option<Arc<RwLock<dyn Widget>>> {
+    pub fn widget(&self, node: NodeId) -> Option<Arc<RwLock<dyn Widget<U>>>> {
         match self.nodes.get(node) {
             Some(LayoutNode::Leaf(leaf)) => Some(leaf.widget.clone()),
             _ => None,
@@ -720,7 +720,7 @@ impl Layout {
         &mut self,
         node: NodeId,
         direction: Axis,
-        widget: impl Widget + 'static,
+        widget: impl Widget<U> + 'static,
     ) -> NodeId {
         self.dirty = true;
         if self.is_leaf(node) {
@@ -765,7 +765,7 @@ pub mod tests {
     #[test]
     fn adjacent() {
         // Create the layout struct
-        let mut layout = Layout::new();
+        let mut layout = Layout::<()>::new();
 
         // Create a TextBox widget, wrapped by a Border widget
         let editor_1 = Border::new("textbox 1".to_owned(), TextBox::new());

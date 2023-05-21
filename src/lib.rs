@@ -112,12 +112,17 @@ pub mod surface {
 pub mod event {
     pub use termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent};
 
+    #[derive(Debug)]
+    pub enum UserEvent<U> {
+        Exit,
+        User(U),
+    }
+
     /// An event that can be sent to a widget or handled by the global event handler.
     #[derive(Debug)]
-    pub enum Event {
+    pub enum Event<U> {
         Input(InputEvent),
-        User(String),
-        Exit,
+        User(UserEvent<U>),
     }
 }
 
@@ -174,34 +179,35 @@ impl Default for Config {
     }
 }
 
-pub type GlobalHandler = dyn Fn(&mut App, &Event, Arc<Sender<()>>) -> Result<bool>;
+pub type GlobalHandler<U> =
+    dyn Fn(&mut App<U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool>;
 
 /// The main application struct, responsible for managing the layout tree,
 /// keeping track of focus, and rendering the widgets.
-pub struct App {
+pub struct App<U = ()> {
     /// The layout tree
-    layout: Layout,
+    layout: Layout<U>,
     /// The actual terminal used for rendering
     term: BufferedTerminal<UnixTerminal>,
     /// The size of the terminal
     size: Rect,
     /// The focused node in the tree, if any
     focus: Option<NodeId>,
-    /// Sender for exit event, given to widgets when `Widget::update` is called
-    exit_tx: Arc<std::sync::mpsc::Sender<()>>,
-    /// Receiver for exit event, only used internally
-    exit_rx: std::sync::mpsc::Receiver<()>,
+    /// Sender for user events, given to widgets when `Widget::update` is called
+    event_tx: Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
+    /// Receiver for user events, only used internally
+    event_rx: std::sync::mpsc::Receiver<UserEvent<U>>,
     /// Used to signal the exit internally
     exit: AtomicBool,
     /// Global event handler, which intercepts events before they are propagated to the focused
     /// widget. If the handler returns `Ok(true)`, the event is considered handled and is not
     /// propagated to the widget that would otherwise receive it.
-    global_event_handler: Box<GlobalHandler>,
+    global_event_handler: Box<GlobalHandler<U>>,
     /// Configuration struct
     config: Config,
 }
 
-impl Drop for App {
+impl<U> Drop for App<U> {
     fn drop(&mut self) {
         // Restore cursor visibility and leave alternate screen when app exits
         self.term
@@ -210,8 +216,8 @@ impl Drop for App {
     }
 }
 
-impl App {
-    fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget>>, &Rect)> {
+impl<U: 'static> App<U> {
+    fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget<U>>>, &Rect)> {
         Ok((
             // Retrieve widget trait object from node
             self.layout
@@ -224,25 +230,27 @@ impl App {
         ))
     }
 
-    fn global_event(&mut self, event: &Event) -> Result<bool> {
+    fn global_event(&mut self, event: &Event<U>) -> Result<bool> {
         if self.config.ctrl_q_quit {
             if let Event::Input(InputEvent::Key(KeyEvent {
                 key: KeyCode::Char('q'),
                 modifiers: Modifiers::CTRL,
             })) = event
             {
-                self.exit_tx.send(()).map_err(|_| Error::SignalSendFail)?
+                self.event_tx
+                    .send(UserEvent::Exit)
+                    .map_err(|_| Error::SignalSendFail)?
             }
         }
 
         // Safety: The function pointer is stored in self so the borrow checker doesn't like
         // us calling it with a mutable reference to self. However, the function pointer won't be changed
         // so it should be safe to call with a mutable reference to self.
-        let evt = &self.global_event_handler as *const GlobalHandler;
-        unsafe { (*evt)(self, event, self.exit_tx.clone()) }
+        let evt = &self.global_event_handler as *const GlobalHandler<U>;
+        unsafe { (*evt)(self, event, self.event_tx.clone()) }
     }
 
-    fn process_event(&mut self, event: Event) -> Result<()> {
+    fn process_event(&mut self, event: Event<U>) -> Result<()> {
         match &event {
             Event::Input(input_event) => match &input_event {
                 InputEvent::Resized { cols, rows } => {
@@ -299,7 +307,7 @@ impl App {
                             widget
                                 .write()
                                 .map_err(|_| Error::WidgetWriteLockError(focus))?
-                                .update(layout, event, self.exit_tx.clone())?;
+                                .update(layout, event, self.event_tx.clone())?;
                         } else if *mouse_buttons == MouseButtons::LEFT
                             || self.config.focus_follows_hover
                         {
@@ -320,34 +328,38 @@ impl App {
                         widget
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
-                            .update(layout, event, self.exit_tx.clone())?;
+                            .update(layout, event, self.event_tx.clone())?;
                     };
                 }
             },
-            Event::Exit => {
-                self.exit.store(true, std::sync::atomic::Ordering::SeqCst);
-            }
-            Event::User(_) => {
-                if !self.global_event(&event)? {
-                    let Some(focus) = self.focus else {
-                        // If there's no focus, we can't do anything
-                        return Ok(());
-                    };
-                    let (widget, layout) = self.render_ctx(focus)?;
-                    widget
-                        .write()
-                        .map_err(|_| Error::WidgetWriteLockError(focus))?
-                        .update(layout, event, self.exit_tx.clone())?;
-                };
+            Event::User(user_event) => {
+                match user_event {
+                    UserEvent::Exit => {
+                        self.exit.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    UserEvent::User(_) => {
+                        if !self.global_event(&event)? {
+                            let Some(focus) = self.focus else {
+                                // If there's no focus, we can't do anything
+                                return Ok(());
+                            };
+                            let (widget, layout) = self.render_ctx(focus)?;
+                            widget
+                                .write()
+                                .map_err(|_| Error::WidgetWriteLockError(focus))?
+                                .update(layout, event, self.event_tx.clone())?;
+                        };
+                    }
+                }
             }
         }
 
         Ok(())
     }
 
-    fn handle_exit_events(&mut self) -> Result<()> {
-        if self.exit_rx.try_recv().is_ok() {
-            self.process_event(Event::Exit)?;
+    fn handle_user_events(&mut self) -> Result<()> {
+        if let Ok(event) = self.event_rx.try_recv() {
+            self.process_event(Event::User(event))?;
         }
         Ok(())
     }
@@ -367,7 +379,7 @@ impl App {
     /// Calls a closure, passing in a mutable reference to the layout.
     pub fn update_layout<F, R>(&mut self, f: F) -> R
     where
-        F: FnOnce(&mut Layout) -> R,
+        F: FnOnce(&mut Layout<U>) -> R,
         R: Sized,
     {
         f(&mut self.layout)
@@ -376,7 +388,7 @@ impl App {
     /// Calls a closure, passing in an immutable reference to the layout.
     pub fn inspect_layout<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&Layout) -> R,
+        F: FnOnce(&Layout<U>) -> R,
         R: Sized,
     {
         f(&self.layout)
@@ -386,7 +398,7 @@ impl App {
     ///
     /// This should be used as the condition (or part of the condition) for an application's render loop.
     pub fn handle_events(&mut self) -> Result<bool> {
-        self.handle_exit_events()?;
+        self.handle_user_events()?;
         self.handle_input_events()?;
         Ok(!self.exit.load(std::sync::atomic::Ordering::SeqCst))
     }
@@ -483,13 +495,15 @@ impl App {
         }
 
         // Compute optimized diff and flush
-        self.term.flush().map_err(|_| Error::TerminalError)?;
+        self.term
+            .flush()
+            .map_err(|_| Error::external("could not flush terminal"))?;
 
         Ok(())
     }
 
     /// Create a new Sanguine application with the provided layout and no global event handler.
-    pub fn new(layout: Layout, config: Config) -> Result<Self> {
+    pub fn new(layout: Layout<U>, config: Config) -> Result<Self> {
         let term = Capabilities::new_from_env()
             .and_then(|caps| {
                 UnixTerminal::new(caps).and_then(|mut t| {
@@ -504,12 +518,12 @@ impl App {
         Ok(App {
             global_event_handler: Box::new(|_, _, _| Ok(false)),
             size: Rect::from_size(term.dimensions()),
-            exit_tx: Arc::new(exit_tx),
+            event_tx: Arc::new(exit_tx),
             exit: AtomicBool::new(false),
             focus: None,
             layout,
             term,
-            exit_rx,
+            event_rx: exit_rx,
             config,
         })
     }
@@ -518,9 +532,9 @@ impl App {
     /// intercepts events before they are sent to widgets. It can return true to prevent the event
     /// from propagating to widgets, or false to allow propagation.
     pub fn with_global_handler(
-        layout: Layout,
+        layout: Layout<U>,
         config: Config,
-        handler: impl Fn(&mut App, &Event, Arc<Sender<()>>) -> Result<bool> + 'static,
+        handler: impl Fn(&mut App<U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
     ) -> Result<Self> {
         let mut new = Self::new(layout, config)?;
         new.global_event_handler = Box::new(handler);

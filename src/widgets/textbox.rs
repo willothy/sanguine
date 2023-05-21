@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use crate::{
     error::Error,
     error::Result,
-    event::{Event, InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent},
+    event::{Event, InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent, UserEvent},
     layout::Rect,
     surface::{Change, Position, Surface},
     widget::Widget,
@@ -132,10 +132,27 @@ impl TextBox {
         self.set_cursor_y(y);
         self.set_cursor_x(x);
     }
+
+    fn validate_cursor(&mut self) {
+        let nlines = self.buf.read().unwrap().len();
+        if self.cursor.y >= nlines {
+            self.cursor.y = nlines - 1;
+        }
+        let len = self
+            .buf
+            .read()
+            .unwrap()
+            .get(self.cursor.y)
+            .map(|l| l.len())
+            .unwrap_or(0);
+        if self.cursor.x > len {
+            self.cursor.x = len;
+        }
+    }
 }
 
-impl Widget for TextBox {
-    fn render(&self, _layout: &crate::layout::Layout, surface: &mut Surface, _focused: bool) {
+impl<U> Widget<U> for TextBox {
+    fn render(&self, _layout: &crate::layout::Layout<U>, surface: &mut Surface, _focused: bool) {
         let (width, height) = surface.dimensions();
         self.buf
             .read()
@@ -162,9 +179,10 @@ impl Widget for TextBox {
     fn update(
         &mut self,
         layout: &Rect,
-        event: Event,
-        _: std::sync::Arc<std::sync::mpsc::Sender<()>>,
+        event: Event<U>,
+        _: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
+        self.validate_cursor();
         match event {
             Event::Input(InputEvent::Key(KeyEvent { key, modifiers })) => {
                 if modifiers == Modifiers::NONE || modifiers == Modifiers::SHIFT {

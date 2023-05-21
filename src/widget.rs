@@ -1,6 +1,10 @@
 use std::sync::{mpsc::Sender, Arc};
 
-use crate::{event::Event, layout::*, surface::Surface};
+use crate::{
+    event::{Event, UserEvent},
+    layout::*,
+    surface::Surface,
+};
 
 /// The core widget trait that all widgets must implement.
 /// This trait provides the methods that the layout engine uses to interact with widgets.
@@ -10,10 +14,10 @@ use crate::{event::Event, layout::*, surface::Surface};
 ///
 /// Widgets can be shared behind an `Arc<RwLock<dyn Widget>>` to show the same widget in multiple
 /// windows.
-pub trait Widget {
+pub trait Widget<U> {
     /// This method is called every render loop, and is responsible for rendering the widget onto
     /// the provided surface.
-    fn render(&self, layout: &Layout, surface: &mut Surface, focused: bool);
+    fn render(&self, layout: &Layout<U>, surface: &mut Surface, focused: bool);
 
     #[allow(unused_variables)]
     /// This method is called when an input event is received that targets this widget.
@@ -21,8 +25,8 @@ pub trait Widget {
     fn update(
         &mut self,
         bounds: &Rect,
-        event: Event,
-        exit_tx: Arc<Sender<()>>,
+        event: Event<U>,
+        event_tx: Arc<Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         Ok(())
     }

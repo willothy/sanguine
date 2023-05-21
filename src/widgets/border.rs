@@ -4,22 +4,22 @@ use std::sync::{mpsc::Sender, Arc, RwLock};
 
 use crate::{
     error::Error,
-    event::{Event, InputEvent, MouseEvent},
+    event::{Event, InputEvent, MouseEvent, UserEvent},
     layout::Rect,
     surface::*,
     Widget,
 };
 
 /// Displays a border around a widget, with a title and a `*` when the widget is focused.
-pub struct Border {
+pub struct Border<U> {
     title: String,
-    inner: Arc<RwLock<dyn Widget>>,
+    inner: Arc<RwLock<dyn Widget<U>>>,
 }
 
-impl Border {
-    pub fn new(title: String, inner: impl Widget + 'static) -> Self {
+impl<U> Border<U> {
+    pub fn new(title: impl Into<String>, inner: impl Widget<U> + 'static) -> Self {
         Self {
-            title,
+            title: title.into(),
             inner: Arc::new(RwLock::new(inner)),
         }
     }
@@ -32,8 +32,8 @@ const TOP_RIGHT: char = '┐';
 const BOTTOM_LEFT: char = '└';
 const BOTTOM_RIGHT: char = '┘';
 
-impl Widget for Border {
-    fn render(&self, layout: &crate::layout::Layout, surface: &mut Surface, focused: bool) {
+impl<U> Widget<U> for Border<U> {
+    fn render(&self, layout: &crate::layout::Layout<U>, surface: &mut Surface, focused: bool) {
         let (width, height) = surface.dimensions();
         let mut changes = vec![];
         changes.push(Change::Text(TOP_LEFT.to_string()));
@@ -99,8 +99,8 @@ impl Widget for Border {
     fn update(
         &mut self,
         rect: &Rect,
-        mut event: Event,
-        exit_tx: Arc<Sender<()>>,
+        mut event: Event<U>,
+        exit_tx: Arc<Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         let rect = Rect {
             x: rect.x + 1.,
