@@ -96,7 +96,6 @@ pub fn main() -> Result<()> {
                     modifiers: Modifiers::SHIFT,
                 }) => {
                     state.cycle_focus()?;
-                    return Ok(true);
                 }
                 Event::Key(KeyEvent {
                     key:
@@ -114,11 +113,10 @@ pub fn main() -> Result<()> {
                         _ => unreachable!(),
                     };
                     state.focus_direction(dir)?;
-                    return Ok(true);
                 }
-                _ => (),
+                _ => return Ok(false),
             }
-            Ok(false)
+            Ok(true)
         },
     )?;
     // Set the initial focus to the left node.
