@@ -3,14 +3,9 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use slotmap::new_key_type;
-
 use super::geometry::{Axis, Direction, Rect, SizeHint};
+use crate::allocator::{NodeId, Slab};
 use crate::widget::Widget;
-
-new_key_type! {
-    pub struct NodeId;
-}
 
 pub struct Leaf<U> {
     widget: Arc<RwLock<dyn Widget<U>>>,
@@ -52,7 +47,7 @@ pub enum LayoutNode<U> {
 
 pub struct Layout<U> {
     /// The arena containing all nodes, keyed by unique id.
-    nodes: slotmap::SlotMap<NodeId, LayoutNode<U>>,
+    nodes: Slab<LayoutNode<U>>,
     /// Render results. Will be stale or zeroed if `Layout::compute()` isn't called after each
     /// change.
     layout: HashMap<NodeId, Rect>,
@@ -71,7 +66,7 @@ impl<U> Default for Layout<U> {
 impl<U> Layout<U> {
     /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
-        let mut nodes = slotmap::SlotMap::with_key();
+        let mut nodes = Slab::new();
         let root = nodes.insert(LayoutNode::Container(Container {
             direction: Axis::Vertical,
             size: None,
