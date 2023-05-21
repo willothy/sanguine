@@ -7,7 +7,7 @@ use super::{
     floating::{FloatStack, Floating},
     geometry::{Axis, Direction, Rect, SizeHint},
 };
-use crate::allocator::{NodeId, Slab};
+use crate::slab::{NodeId, Slab};
 use crate::widget::Widget;
 
 pub struct Leaf<U> {

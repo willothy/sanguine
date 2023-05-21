@@ -91,7 +91,7 @@ use std::{
     unreachable,
 };
 
-use allocator::*;
+use slab::*;
 use error::{Error, Result};
 use event::*;
 use layout::*;
@@ -129,7 +129,7 @@ pub mod event {
 
 /// Commonly used types from Sanguine and termwiz
 pub mod prelude {
-    pub use crate::allocator::NodeId;
+    pub use crate::slab::NodeId;
     pub use crate::error::*;
     pub use crate::event::*;
     pub use crate::layout::*;
@@ -138,7 +138,7 @@ pub mod prelude {
     pub use crate::{App, Config};
 }
 
-mod allocator;
+mod slab;
 pub mod error;
 pub mod layout;
 mod widget;

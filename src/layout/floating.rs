@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::{
-    allocator::{NodeId, Slab},
+    slab::{NodeId, Slab},
     Widget,
 };
 
@@ -14,9 +14,6 @@ pub struct Floating<U> {
     pos: Rect,
     /// Z-index of the window (only applies when not focused)
     z_index: usize,
-    /// Whether the window can be focused
-    #[allow(unused)]
-    focusable: bool,
 }
 
 impl<U> Floating<U> {
@@ -25,7 +22,6 @@ impl<U> Floating<U> {
             widget: Arc::new(RwLock::new(widget)),
             pos,
             z_index: 1,
-            focusable: true,
         }
     }
 
@@ -34,7 +30,6 @@ impl<U> Floating<U> {
             widget,
             pos,
             z_index: 1,
-            focusable: true,
         }
     }
 
@@ -46,31 +41,13 @@ impl<U> Floating<U> {
         self.z_index
     }
 
-    pub fn focusable(self) -> Self {
-        Self {
-            focusable: true,
-            ..self
-        }
-    }
-
     pub fn widget(&self) -> Arc<RwLock<dyn Widget<U>>> {
         self.widget.clone()
-    }
-
-    pub fn set_focusable(&mut self, focusable: bool) {
-        self.focusable = focusable;
     }
 
     pub fn move_to(&mut self, pos: (usize, usize)) {
         self.pos.x = pos.0 as f32;
         self.pos.y = pos.1 as f32;
-    }
-
-    pub fn no_focus(self) -> Self {
-        Self {
-            focusable: false,
-            ..self
-        }
     }
 
     pub fn move_dir(&mut self, direction: Direction) {
@@ -88,6 +65,7 @@ pub struct FloatStack<U> {
     marker: std::marker::PhantomData<U>,
 }
 
+#[allow(unused)]
 impl<U> FloatStack<U> {
     pub fn new() -> Self {
         Self {
@@ -129,11 +107,7 @@ impl<U> FloatStack<U> {
     }
 
     pub fn pop(&mut self, nodes: &Slab<LayoutNode<U>>) -> Option<NodeId> {
-        if let Some(res) = self.inner.pop() {
-            self.sort(nodes);
-            return Some(res);
-        }
-        None
+        self.inner.pop()
     }
 
     pub fn peek(&self) -> Option<NodeId> {

@@ -1,6 +1,6 @@
 //! Error handling
 
-use crate::allocator::NodeId;
+use crate::slab::NodeId;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
