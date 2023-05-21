@@ -3,7 +3,10 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use super::geometry::{Axis, Direction, Rect, SizeHint};
+use super::{
+    floating::{FloatStack, Floating},
+    geometry::{Axis, Direction, Rect, SizeHint},
+};
 use crate::allocator::{NodeId, Slab};
 use crate::widget::Widget;
 
@@ -16,6 +19,13 @@ impl<U> Leaf<U> {
     pub fn new(widget: impl Widget<U> + 'static) -> Self {
         Self {
             widget: Arc::new(RwLock::new(widget)),
+            parent: None,
+        }
+    }
+
+    pub fn from_widget(widget: Arc<RwLock<dyn Widget<U>>>) -> Self {
+        Self {
+            widget,
             parent: None,
         }
     }
@@ -43,6 +53,42 @@ pub struct Container {
 pub enum LayoutNode<U> {
     Container(Container),
     Leaf(Leaf<U>),
+    Floating(Floating<U>),
+}
+
+impl<U> LayoutNode<U> {
+    pub fn is_leaf(&self) -> bool {
+        matches!(self, Self::Leaf(_))
+    }
+
+    pub fn is_container(&self) -> bool {
+        matches!(self, Self::Container(_))
+    }
+
+    pub fn is_floating(&self) -> bool {
+        matches!(self, Self::Floating(_))
+    }
+
+    pub fn leaf(&self) -> Option<&Leaf<U>> {
+        match self {
+            Self::Leaf(leaf) => Some(leaf),
+            _ => None,
+        }
+    }
+
+    pub fn container(&self) -> Option<&Container> {
+        match self {
+            Self::Container(container) => Some(container),
+            _ => None,
+        }
+    }
+
+    pub fn floating(&self) -> Option<&Floating<U>> {
+        match self {
+            Self::Floating(floating) => Some(floating),
+            _ => None,
+        }
+    }
 }
 
 pub struct Layout<U> {
@@ -53,6 +99,8 @@ pub struct Layout<U> {
     layout: HashMap<NodeId, Rect>,
     /// The root node of the layout.
     root: NodeId,
+    /// Floating windows attached to the layout
+    floating: FloatStack<U>,
     /// Whether the layout should be recomputed
     dirty: bool,
 }
@@ -76,6 +124,7 @@ impl<U> Layout<U> {
         Self {
             nodes,
             root,
+            floating: FloatStack::new(),
             layout: HashMap::from([(root, Rect::default())]),
             // True so that the first call to `compute` will always recompute the layout
             dirty: true,
@@ -83,18 +132,36 @@ impl<U> Layout<U> {
     }
 
     pub fn node_at_pos(&self, pos: (u16, u16)) -> Option<NodeId> {
-        self.leaves().into_iter().find(|v| {
-            let Some(rect) = self.layout(*v) else {
-                return false;
-            };
+        self.floating
+            .iter()
+            .find_map(|id| {
+                self.layout(*id)
+                    .map(|rect| (id, rect))
+                    .and_then(|(id, rect)| {
+                        if rect.contains(pos.0 as f32, pos.1 as f32) {
+                            Some(*id)
+                        } else {
+                            None
+                        }
+                    })
+            })
+            .or_else(|| {
+                self.leaves().into_iter().find(|v| {
+                    let Some(rect) = self.layout(*v) else {
+                        return false;
+                    };
 
-            rect.contains(pos.0 as f32, pos.1 as f32)
-        })
+                    rect.contains(pos.0 as f32, pos.1 as f32)
+                })
+            })
     }
 
     /// Returns nodes adjacent to the given node, along with the direction to get to them
     pub fn adjacent(&self, node: NodeId) -> Vec<(NodeId, Direction)> {
-        let mut map = Vec::new();
+        let mut neighbors = Vec::new();
+        if self.is_floating(node) {
+            return neighbors;
+        }
         let parent = self.parent(node).unwrap();
         let direction = self.direction(parent).unwrap();
         let children = self.children(parent).unwrap();
@@ -102,7 +169,7 @@ impl<U> Layout<U> {
         if index > 0 {
             let node = children[index - 1];
             if self.is_leaf(node) {
-                map.push((
+                neighbors.push((
                     node,
                     match direction {
                         Axis::Vertical => Direction::Up,
@@ -113,7 +180,7 @@ impl<U> Layout<U> {
                 let direction = self.direction(node).unwrap();
                 let children = self.children(node).unwrap();
                 children.iter().for_each(|id| {
-                    map.push((
+                    neighbors.push((
                         *id,
                         match direction {
                             Axis::Vertical => Direction::Up,
@@ -126,7 +193,7 @@ impl<U> Layout<U> {
         if index < children.len() - 1 {
             let node = children[index + 1];
             if self.is_leaf(node) {
-                map.push((
+                neighbors.push((
                     node,
                     match direction {
                         Axis::Vertical => Direction::Down,
@@ -137,7 +204,7 @@ impl<U> Layout<U> {
                 let direction = self.direction(node).unwrap();
                 let children = self.children(node).unwrap();
                 children.iter().for_each(|id| {
-                    map.push((
+                    neighbors.push((
                         *id,
                         match direction {
                             Axis::Vertical => Direction::Right,
@@ -156,7 +223,7 @@ impl<U> Layout<U> {
                 if *id == parent {
                     return;
                 }
-                map.push((
+                neighbors.push((
                     *id,
                     match direction {
                         Axis::Vertical => Direction::Down,
@@ -166,7 +233,7 @@ impl<U> Layout<U> {
             });
         }
 
-        map
+        neighbors
     }
 
     /// Returns nodes that are adjacent to the given node on the given side.
@@ -181,6 +248,9 @@ impl<U> Layout<U> {
     /// Returns x/y value of intersections between node and other nodes on the given side.
     pub fn side_intersections(&self, node: NodeId, side: Direction) -> Vec<f32> {
         let mut intersections = vec![];
+        if self.is_floating(node) {
+            return intersections;
+        }
         let Some(bounds) = self.layout(node) else {
             return intersections;
         };
@@ -222,10 +292,7 @@ impl<U> Layout<U> {
     pub fn clean(&mut self) {
         self.dirty = true;
         self.layout.clear();
-        self.nodes.retain(|_, v| match v {
-            LayoutNode::Container(c) => c.parent.is_some(),
-            LayoutNode::Leaf(l) => l.parent.is_some(),
-        });
+        self.nodes.clear();
     }
 
     /// Computes the layout of the tree for the given bounds. This must be called after each change to the tree.
@@ -399,6 +466,7 @@ impl<U> Layout<U> {
                 container.size.clone().unwrap_or(SizeHint::Fill)
             }
             Some(LayoutNode::Leaf(leaf)) => leaf.widget.read().unwrap().size_hint(),
+            Some(LayoutNode::Floating(_)) => SizeHint::Fill,
             None => SizeHint::Fill,
         }
     }
@@ -434,6 +502,11 @@ impl<U> Layout<U> {
         leaves
     }
 
+    /// Get the floats of the layout tree
+    pub fn floats(&self) -> impl Iterator<Item = &NodeId> {
+        self.floating.iter()
+    }
+
     /// Traverse the layout tree
     pub fn traverse(&self, mut f: impl FnMut(NodeId, &LayoutNode<U>)) {
         self.traverse_recursive(self.root, &mut f);
@@ -450,6 +523,7 @@ impl<U> Layout<U> {
                 }
             }
             LayoutNode::Leaf(_) => {}
+            LayoutNode::Floating(_) => {}
         }
     }
 
@@ -466,6 +540,7 @@ impl<U> Layout<U> {
                 }
             }
             LayoutNode::Leaf(_) => println!("Leaf: {:?}", self.layout(node_id)),
+            LayoutNode::Floating(_) => println!("Floating: {:?}", self.layout(node_id)),
         }
     }
 
@@ -475,20 +550,6 @@ impl<U> Layout<U> {
         self.dirty = true;
         self.nodes.remove(node);
         self.layout.remove(&node);
-    }
-
-    /// Adds a new (empty) container node to the layout.
-    pub fn add_container(&mut self, direction: Axis, size: Option<SizeHint>) -> NodeId {
-        let container = Container {
-            children: vec![],
-            direction,
-            size,
-            parent: None,
-        };
-        let node = LayoutNode::Container(container);
-        let id = self.nodes.insert(node);
-        self.layout.insert(id, Rect::default());
-        id
     }
 
     /// Sets the size hint for a container
@@ -505,6 +566,20 @@ impl<U> Layout<U> {
         if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(node) {
             container.direction = axis;
         }
+    }
+
+    /// Adds a new (empty) container node to the layout.
+    pub fn add_container(&mut self, direction: Axis, size: Option<SizeHint>) -> NodeId {
+        let container = Container {
+            children: vec![],
+            direction,
+            size,
+            parent: None,
+        };
+        let node = LayoutNode::Container(container);
+        let id = self.nodes.insert(node);
+        self.layout.insert(id, Rect::default());
+        id
     }
 
     /// Adds a new container node to the layout with the given children.
@@ -544,6 +619,48 @@ impl<U> Layout<U> {
         let id = self.nodes.insert(node);
         self.layout.insert(id, Rect::default());
         id
+    }
+
+    pub fn add_floating(&mut self, widget: impl Widget<U> + 'static, rect: Rect) -> NodeId {
+        self.dirty = true;
+        let node = LayoutNode::Floating(Floating::new(widget, rect.clone()));
+        let id = self.nodes.insert(node);
+        self.layout.insert(id, rect);
+        self.floating.push(id, &self.nodes);
+        id
+    }
+
+    pub fn make_floating(&mut self, node: NodeId, rect: Rect) {
+        self.dirty = true;
+        if !self.is_leaf(node) {
+            return;
+        }
+        let widget = self.widget(node).unwrap();
+        if let Some(leaf) = self.nodes.get_mut(node) {
+            if let Some(parent) = leaf.leaf().as_ref().unwrap().parent {
+                if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(parent) {
+                    container.children.retain(|v| *v != node);
+                }
+            }
+            let floating = Floating::from_widget(widget, rect);
+            let new = LayoutNode::Floating(floating);
+            *leaf = new;
+        }
+        self.floating.push(node, &self.nodes);
+    }
+
+    pub fn make_leaf(&mut self, node: NodeId) {
+        self.dirty = true;
+        if !self.is_floating(node) {
+            return;
+        }
+        let widget = self.widget(node).unwrap();
+        if let Some(floating) = self.nodes.get_mut(node) {
+            let leaf = Leaf::from_widget(widget);
+            let new = LayoutNode::Leaf(leaf);
+            self.floating.remove(node);
+            *floating = new;
+        }
     }
 
     /// Directly adds a leaf node to the layout.
@@ -671,6 +788,7 @@ impl<U> Layout<U> {
     pub fn widget(&self, node: NodeId) -> Option<Arc<RwLock<dyn Widget<U>>>> {
         match self.nodes.get(node) {
             Some(LayoutNode::Leaf(leaf)) => Some(leaf.widget.clone()),
+            Some(LayoutNode::Floating(float)) => Some(float.widget()),
             _ => None,
         }
     }
@@ -745,6 +863,10 @@ impl<U> Layout<U> {
                 node
             }
         }
+    }
+
+    fn is_floating(&self, node: NodeId) -> bool {
+        matches!(self.nodes.get(node), Some(LayoutNode::Floating(_)))
     }
 }
 

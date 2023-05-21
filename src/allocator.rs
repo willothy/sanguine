@@ -37,6 +37,154 @@ pub struct Slab<V> {
     free: VecDeque<u32>,
 }
 
+pub struct SlabIter<'a, V> {
+    slab: NonNull<Slot<V>>,
+    offset: usize,
+    cap: usize,
+    marker: std::marker::PhantomData<&'a V>,
+}
+
+impl<'a, V> Iterator for SlabIter<'a, V> {
+    type Item = &'a V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.offset >= self.cap {
+                return None;
+            } else {
+                let ptr = self.slab.as_ptr();
+                let slot = unsafe { ptr.add(self.offset).as_ref() };
+                if let Some(slot) = slot {
+                    if slot.version % 2 != 0 {
+                        // slot is empty
+                        self.offset += 1;
+                        continue;
+                    } else {
+                        self.offset += 1;
+                        return Some(&slot.value);
+                    }
+                } else {
+                    self.offset += 1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub struct SlabIterMut<'a, V> {
+    slab: NonNull<Slot<V>>,
+    offset: usize,
+    cap: usize,
+    marker: std::marker::PhantomData<&'a mut V>,
+}
+
+impl<'a, V> Iterator for SlabIterMut<'a, V> {
+    type Item = &'a mut V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.offset >= self.cap {
+                return None;
+            } else {
+                let ptr = self.slab.as_ptr();
+                let slot = unsafe { ptr.add(self.offset).as_mut() };
+                if let Some(slot) = slot {
+                    if slot.version % 2 != 0 {
+                        // slot is empty
+                        self.offset += 1;
+                        continue;
+                    } else {
+                        self.offset += 1;
+                        return Some(&mut slot.value);
+                    }
+                } else {
+                    self.offset += 1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub struct SlabIntoIter<V> {
+    slab: NonNull<Slot<V>>,
+    offset: usize,
+    cap: usize,
+}
+
+impl<V> Iterator for SlabIntoIter<V> {
+    type Item = V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.offset >= self.cap {
+                return None;
+            } else {
+                let ptr = self.slab.as_ptr();
+                let slot = unsafe { ptr.add(self.offset).as_mut() };
+                if let Some(slot) = slot {
+                    if slot.version % 2 != 0 {
+                        // slot is empty
+                        self.offset += 1;
+                        continue;
+                    } else {
+                        self.offset += 1;
+                        return Some(unsafe { std::ptr::read(&slot.value) });
+                    }
+                } else {
+                    self.offset += 1;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+impl<'a, V> IntoIterator for &'a Slab<V> {
+    type Item = &'a V;
+
+    type IntoIter = SlabIter<'a, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SlabIter {
+            slab: self.ptr,
+            offset: 0,
+            cap: self.cap,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, V> IntoIterator for &'a mut Slab<V> {
+    type Item = &'a mut V;
+
+    type IntoIter = SlabIterMut<'a, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SlabIterMut {
+            slab: self.ptr,
+            offset: 0,
+            cap: self.cap,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<V> IntoIterator for Slab<V> {
+    type Item = V;
+
+    type IntoIter = SlabIntoIter<V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SlabIntoIter {
+            slab: self.ptr,
+            offset: 0,
+            cap: self.cap,
+        }
+    }
+}
+
 #[allow(unused)]
 impl<V> Slab<V> {
     pub fn new() -> Self {
@@ -46,6 +194,42 @@ impl<V> Slab<V> {
             cap: 0,
             taken: 0,
             free: VecDeque::new(),
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        SlabIterMut {
+            slab: self.ptr,
+            offset: 0,
+            cap: self.cap,
+            marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &V> {
+        SlabIter {
+            slab: self.ptr,
+            offset: 0,
+            cap: self.cap,
+            marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        for i in 0..self.cap {
+            let ptr = self.ptr.as_ptr();
+            let slot = unsafe { ptr.add(i).as_mut() };
+            if let Some(slot) = slot {
+                if slot.version % 2 == 0 {
+                    // slot is taken, mark it as free
+                    slot.version += 1;
+                }
+            }
+        }
+        self.taken = 0;
+        self.free.clear();
+        for i in 0..self.cap {
+            self.free.push_back(i as u32);
         }
     }
 
@@ -173,7 +357,7 @@ impl<V> Slab<V> {
         }
     }
 
-    pub fn get_mut(&mut self, key: NodeId) -> Option<&mut V> {
+    pub fn get_mut(&self, key: NodeId) -> Option<&mut V> {
         let (idx, ver) = NodeId::into_raw(key);
         if idx as usize > self.cap {
             return None;

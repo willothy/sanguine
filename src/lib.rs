@@ -187,6 +187,9 @@ pub type GlobalHandler<U> =
 
 /// The main application struct, responsible for managing the layout tree,
 /// keeping track of focus, and rendering the widgets.
+///
+/// The generic type U is the type of user events that can be sent to widgets. It can be used to
+/// define custom message-passing behavior between widgets.
 pub struct App<U = ()> {
     /// The layout tree
     layout: Layout<U>,
@@ -454,6 +457,31 @@ impl<U: 'static> App<U> {
 
         // Retrieve leaves (windows) from layout
         self.layout.leaves().into_iter().for_each(|node| {
+            let Ok((widget, layout)) = self.render_ctx(node) else {
+                // Do nothing if widget or layout is missing
+                // TODO: Log error
+                return;
+            };
+
+            // Draw onto widget screen for composition
+            let mut widget_screen = Surface::new(layout.width as usize, layout.height as usize);
+
+            // Render widget onto widget screen
+            let Ok(widget) = widget.read() else {
+                return
+            };
+
+            if let Some(focus) = self.focus {
+                widget.render(&self.layout, &mut widget_screen, node == focus);
+            } else {
+                widget.render(&self.layout, &mut widget_screen, false);
+            }
+
+            // Draw widget onto background screen
+            screen.draw_from_screen(&widget_screen, layout.x as usize, layout.y as usize);
+        });
+
+        self.layout.floats().copied().for_each(|node| {
             let Ok((widget, layout)) = self.render_ctx(node) else {
                 // Do nothing if widget or layout is missing
                 // TODO: Log error

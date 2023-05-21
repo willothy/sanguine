@@ -41,6 +41,18 @@ pub fn main() -> Result<()> {
     // Add the menu widget
     let top_right = layout.add_leaf(Border::new("Menu".to_owned(), menu));
 
+    // Add a floating window
+    layout.add_floating(
+        // The window will contain a text box
+        Border::new("Example Float", TextBox::new()),
+        Rect {
+            x: 1.,
+            y: 1.,
+            width: 25.,
+            height: 5.,
+        },
+    );
+
     // Clone the first editor to add it to the layout again
     // This widget will be *shared* between the two windows, meaning that changes to the underlying
     // buffer will be shown in both windows and focusing on either window will allow you to edit
