@@ -67,7 +67,7 @@ pub fn main() -> Result<()> {
         // The container will be a vertical layout
         Axis::Vertical,
         // The container will take up all available space
-        Some(SizeHint::fill()),
+        Some(Constraint::fill()),
         // The container will contain the cloned first editor, and the second editor
         [top_right, bot_right],
     );

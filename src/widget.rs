@@ -39,7 +39,7 @@ pub trait Widget<U> {
 
     /// This method provides a hint to the layout engine about how much
     /// space the widget should take up.
-    fn size_hint(&self) -> SizeHint {
-        SizeHint::Fill
+    fn constraint(&self) -> Constraint {
+        Constraint::Fill
     }
 }

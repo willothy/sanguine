@@ -5,7 +5,7 @@ use std::{
 
 use super::{
     floating::{FloatStack, Floating},
-    geometry::{Axis, Direction, Rect, SizeHint},
+    geometry::{Axis, Constraint, Direction, Rect},
 };
 use crate::slab::{NodeId, Slab};
 use crate::widget::Widget;
@@ -45,7 +45,7 @@ impl<U> Clone for Leaf<U> {
 #[derive(Debug)]
 pub struct Container {
     direction: Axis,
-    size: Option<SizeHint>,
+    size: Option<Constraint>,
     children: Vec<NodeId>,
     parent: Option<NodeId>,
 }
@@ -342,7 +342,7 @@ impl<U> Layout<U> {
                 .iter()
                 .for_each(|(k, v)| {
                     let size = match v {
-                        SizeHint::Fixed(size) => *size as f32,
+                        Constraint::Fixed(size) => *size as f32,
                         _ => unreachable!(),
                     };
                     let (width, height) = match &axis {
@@ -377,9 +377,9 @@ impl<U> Layout<U> {
     fn compute_sizes(
         &mut self,
         bounds: &Rect,
-        sizes: &[(NodeId, SizeHint)],
+        sizes: &[(NodeId, Constraint)],
         axis: &Axis,
-    ) -> Vec<(NodeId, SizeHint)> {
+    ) -> Vec<(NodeId, Constraint)> {
         let mut new_sizes = Vec::new();
         let width = match axis {
             Axis::Horizontal => bounds.width,
@@ -390,8 +390,8 @@ impl<U> Layout<U> {
         let fixed = sizes
             .iter()
             .filter_map(|(k, size)| match size {
-                SizeHint::Fixed(size) => {
-                    new_sizes.push((*k, SizeHint::Fixed(*size)));
+                Constraint::Fixed(size) => {
+                    new_sizes.push((*k, Constraint::Fixed(*size)));
                     Some(size)
                 }
                 _ => None,
@@ -403,7 +403,7 @@ impl<U> Layout<U> {
         let mut percents = sizes
             .iter()
             .filter_map(|(k, size)| match size {
-                SizeHint::Percentage(percent) => Some((k, *percent)),
+                Constraint::Percentage(percent) => Some((k, *percent)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -420,7 +420,7 @@ impl<U> Layout<U> {
             *f *= remaining;
             let size = f.round() as usize;
             pct_total += size;
-            new_sizes.push((**k, SizeHint::Fixed(size)));
+            new_sizes.push((**k, Constraint::Fixed(size)));
         });
         remaining -= pct_total as f32;
 
@@ -428,7 +428,7 @@ impl<U> Layout<U> {
             .iter()
             .enumerate()
             .filter_map(|(i, (k, size))| match size {
-                SizeHint::Fill => Some((k, i)),
+                Constraint::Fill => Some((k, i)),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -453,21 +453,21 @@ impl<U> Layout<U> {
                 }
             })
             .for_each(|(k, v)| {
-                new_sizes.push((**k, SizeHint::Fixed(v/* fill_size.floor() */ as usize)));
+                new_sizes.push((**k, Constraint::Fixed(v/* fill_size.floor() */ as usize)));
             });
 
         new_sizes
     }
 
     /// Get the size hint of a given node
-    pub fn size(&self, node: NodeId) -> SizeHint {
+    pub fn size(&self, node: NodeId) -> Constraint {
         match self.nodes.get(node) {
             Some(LayoutNode::Container(container)) => {
-                container.size.clone().unwrap_or(SizeHint::Fill)
+                container.size.clone().unwrap_or(Constraint::Fill)
             }
-            Some(LayoutNode::Leaf(leaf)) => leaf.widget.read().unwrap().size_hint(),
-            Some(LayoutNode::Floating(_)) => SizeHint::Fill,
-            None => SizeHint::Fill,
+            Some(LayoutNode::Leaf(leaf)) => leaf.widget.read().unwrap().constraint(),
+            Some(LayoutNode::Floating(_)) => Constraint::Fill,
+            None => Constraint::Fill,
         }
     }
 
@@ -553,7 +553,7 @@ impl<U> Layout<U> {
     }
 
     /// Sets the size hint for a container
-    pub fn set_size(&mut self, node: NodeId, size: SizeHint) {
+    pub fn set_size(&mut self, node: NodeId, size: Constraint) {
         self.dirty = true;
         if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(node) {
             container.size = Some(size);
@@ -569,7 +569,7 @@ impl<U> Layout<U> {
     }
 
     /// Adds a new (empty) container node to the layout.
-    pub fn add_container(&mut self, direction: Axis, size: Option<SizeHint>) -> NodeId {
+    pub fn add_container(&mut self, direction: Axis, size: Option<Constraint>) -> NodeId {
         let container = Container {
             children: vec![],
             direction,
@@ -586,7 +586,7 @@ impl<U> Layout<U> {
     pub fn add_with_children(
         &mut self,
         direction: Axis,
-        size: Option<SizeHint>,
+        size: Option<Constraint>,
         children: impl Into<Vec<NodeId>>,
     ) -> NodeId {
         self.dirty = true;
@@ -873,7 +873,7 @@ impl<U> Layout<U> {
 #[cfg(test)]
 pub mod tests {
     use crate::{
-        layout::{Axis, SizeHint},
+        layout::{Axis, Constraint},
         widgets::{Border, TextBox},
     };
 
@@ -907,7 +907,7 @@ pub mod tests {
             // The container will be a vertical layout
             Axis::Vertical,
             // The container will take up all available space
-            Some(SizeHint::fill()),
+            Some(Constraint::fill()),
             // The container will contain the cloned first editor, and the second editor
             [top_right, bot_right],
         );

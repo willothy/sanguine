@@ -87,14 +87,14 @@ pub enum Axis {
 }
 
 #[derive(Debug, Clone)]
-pub enum SizeHint {
+pub enum Constraint {
     Fixed(usize),
     Percentage(f32),
     Fill,
 }
 
-impl SizeHint {
-    pub fn fill() -> SizeHint {
-        SizeHint::Fill
+impl Constraint {
+    pub fn fill() -> Constraint {
+        Constraint::Fill
     }
 }
