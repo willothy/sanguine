@@ -804,7 +804,6 @@ pub mod tests {
         layout.add_child(root, left);
         layout.add_child(root, right);
 
-        let adjacent = layout.adjacent(left);
-        assert!(false, "{adjacent:?}");
+        let _adjacent = layout.adjacent(left);
     }
 }
