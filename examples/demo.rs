@@ -46,8 +46,8 @@ pub fn main() -> Result<()> {
         // The window will contain a text box
         Border::new("Example Float", TextBox::new()),
         Rect {
-            x: 1.,
-            y: 1.,
+            x: 10.,
+            y: 10.,
             width: 25.,
             height: 5.,
         },
@@ -91,21 +91,21 @@ pub fn main() -> Result<()> {
         Config::default(),
         |state: &mut App, event: &Event<_>, _| {
             match event {
-                Event::Input(InputEvent::Key(KeyEvent {
+                Event::Key(KeyEvent {
                     key: KeyCode::Tab,
                     modifiers: Modifiers::SHIFT,
-                })) => {
+                }) => {
                     state.cycle_focus()?;
                     return Ok(true);
                 }
-                Event::Input(InputEvent::Key(KeyEvent {
+                Event::Key(KeyEvent {
                     key:
                         k @ (KeyCode::UpArrow
                         | KeyCode::DownArrow
                         | KeyCode::LeftArrow
                         | KeyCode::RightArrow),
                     modifiers: Modifiers::SHIFT,
-                })) => {
+                }) => {
                     let dir = match k {
                         KeyCode::UpArrow => Direction::Up,
                         KeyCode::DownArrow => Direction::Down,

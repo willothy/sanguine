@@ -4,7 +4,7 @@ use std::sync::{mpsc::Sender, Arc, RwLock};
 
 use crate::{
     error::Error,
-    event::{Event, InputEvent, MouseEvent, UserEvent},
+    event::{Event, MouseEvent, UserEvent},
     layout::Rect,
     surface::*,
     Widget,
@@ -109,7 +109,7 @@ impl<U> Widget<U> for Border<U> {
             height: rect.height - 2.,
         };
 
-        if let Event::Input(InputEvent::Mouse(MouseEvent { x, y, .. })) = &mut event {
+        if let Event::Mouse(MouseEvent { x, y, .. }) = &mut event {
             *x -= 2;
             *y -= 2;
         }

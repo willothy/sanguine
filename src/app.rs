@@ -1,7 +1,6 @@
 use std::{
     sync::{atomic::AtomicBool, mpsc::Sender, Arc, RwLock},
     time::Duration,
-    unreachable,
 };
 
 use crate::{
@@ -107,10 +106,10 @@ impl<U: 'static> App<U> {
 
     fn global_event(&mut self, event: &Event<U>) -> Result<bool> {
         if self.config.ctrl_q_quit {
-            if let Event::Input(InputEvent::Key(KeyEvent {
+            if let Event::Key(KeyEvent {
                 key: KeyCode::Char('q'),
                 modifiers: Modifiers::CTRL,
-            })) = event
+            }) = event
             {
                 self.event_tx
                     .send(UserEvent::Exit)
@@ -127,105 +126,77 @@ impl<U: 'static> App<U> {
 
     fn process_event(&mut self, event: Event<U>) -> Result<()> {
         match &event {
-            Event::Input(input_event) => match &input_event {
-                InputEvent::Resized { cols, rows } => {
-                    self.size = Rect::from_size((*cols, *rows));
-                    self.term.resize(*cols, *rows);
-                    self.term.repaint().map_err(|_| Error::TerminalError)?;
-                    self.term.flush().map_err(|_| Error::TerminalError)?;
-                    self.layout.mark_dirty();
-                }
-                InputEvent::Wake => {}
-                InputEvent::PixelMouse(_event) => {}
-                InputEvent::Mouse(MouseEvent {
-                    x,
-                    y,
-                    mouse_buttons,
-                    ..
-                }) => {
-                    if !self.global_event(&event)? {
-                        let Some(node) = self.layout.node_at_pos((*x, *y)) else {
-                            return Ok(());
-                        };
-                        if let Some(focus) = self.focus {
-                            let focus = if focus != node {
-                                // Send hover events to the hovered node, but focus the window if the mouse is clicked
-                                if *mouse_buttons != MouseButtons::NONE {
-                                    // If the node under the mouse is different from the focused node,
-                                    // focus the new node and consume the event
-                                    self.focus = Some(node);
-                                    return Ok(());
-                                }
-                                node
-                            } else {
-                                focus
-                            };
-                            // If the node under the mouse is the same as the focused node,
-                            // send the event to the focused node
-                            let (widget, layout) = self.render_ctx(focus)?;
-
-                            let event = match event {
-                                Event::Input(InputEvent::Mouse(MouseEvent {
-                                    x,
-                                    y,
-                                    mouse_buttons,
-                                    modifiers,
-                                })) => Event::Input(InputEvent::Mouse(MouseEvent {
-                                    x: x - layout.x as u16,
-                                    y: y - layout.y as u16,
-                                    mouse_buttons,
-                                    modifiers,
-                                })),
-                                _ => unreachable!(),
-                            };
-
-                            widget
-                                .write()
-                                .map_err(|_| Error::WidgetWriteLockError(focus))?
-                                .update(layout, event, self.event_tx.clone())?;
-                        } else if *mouse_buttons == MouseButtons::LEFT
-                            || self.config.focus_follows_hover
-                        {
-                            // If there's no focus, focus the node under the mouse
-                            self.focus = Some(node);
-                        }
+            Event::Resize { cols, rows } => {
+                self.size = Rect::from_size((*cols, *rows));
+                self.term.resize(*cols, *rows);
+                self.term.repaint().map_err(|_| Error::TerminalError)?;
+                self.term.flush().map_err(|_| Error::TerminalError)?;
+                self.layout.mark_dirty();
+            }
+            Event::Mouse(MouseEvent {
+                x,
+                y,
+                mouse_buttons,
+                modifiers,
+            }) => {
+                if !self.global_event(&event)? {
+                    let Some(node) = self.layout.node_at_pos((*x, *y)) else {
+                        return Ok(());
                     };
-                }
-                _ => {
-                    // Handle global key events
-                    if !self.global_event(&event)? {
-                        let Some(focus) = self.focus else {
-                            // If there's no focus, we can't do anything
-                            return Ok(());
+                    if let Some(focus) = self.focus {
+                        let focus = if focus != node {
+                            // Send hover events to the hovered node, but focus the window if the mouse is clicked
+                            if *mouse_buttons != MouseButtons::NONE {
+                                // If the node under the mouse is different from the focused node,
+                                // focus the new node and consume the event
+                                self.focus = Some(node);
+                                return Ok(());
+                            }
+                            node
+                        } else {
+                            focus
                         };
+                        // If the node under the mouse is the same as the focused node,
+                        // send the event to the focused node
                         let (widget, layout) = self.render_ctx(focus)?;
+
+                        let offset_event = Event::Mouse(MouseEvent {
+                            x: x - layout.x as u16,
+                            y: y - layout.y as u16,
+                            mouse_buttons: *mouse_buttons,
+                            modifiers: *modifiers,
+                        });
 
                         widget
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
-                            .update(layout, event, self.event_tx.clone())?;
+                            .update(layout, offset_event, self.event_tx.clone())?;
+                    } else if *mouse_buttons == MouseButtons::LEFT
+                        || self.config.focus_follows_hover
+                    {
+                        // If there's no focus, focus the node under the mouse
+                        self.focus = Some(node);
+                    }
+                }
+            }
+            Event::User(UserEvent::Exit) => {
+                self.exit.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            // Anything that doesn't need special handling (keys, paste, user events)
+            _ => {
+                // Handle global events
+                if !self.global_event(&event)? {
+                    let Some(focus) = self.focus else {
+                        // If there's no focus, we can't do anything
+                        return Ok(());
                     };
-                }
-            },
-            Event::User(user_event) => {
-                match user_event {
-                    UserEvent::Exit => {
-                        self.exit.store(true, std::sync::atomic::Ordering::SeqCst);
-                    }
-                    UserEvent::User(_) => {
-                        if !self.global_event(&event)? {
-                            let Some(focus) = self.focus else {
-                                // If there's no focus, we can't do anything
-                                return Ok(());
-                            };
-                            let (widget, layout) = self.render_ctx(focus)?;
-                            widget
-                                .write()
-                                .map_err(|_| Error::WidgetWriteLockError(focus))?
-                                .update(layout, event, self.event_tx.clone())?;
-                        };
-                    }
-                }
+                    let (widget, layout) = self.render_ctx(focus)?;
+
+                    widget
+                        .write()
+                        .map_err(|_| Error::WidgetWriteLockError(focus))?
+                        .update(layout, event, self.event_tx.clone())?;
+                };
             }
         }
 
@@ -246,7 +217,15 @@ impl<U: 'static> App<U> {
             .poll_input(Some(Duration::from_millis(5)))
             .map_err(|_| Error::PollInputFailed)?
         {
-            self.process_event(Event::Input(event))?;
+            use termwiz::input::InputEvent;
+            let translated = match event {
+                InputEvent::Key(k) => Event::Key(k),
+                InputEvent::Mouse(m) => Event::Mouse(m),
+                InputEvent::Resized { rows, cols } => Event::Resize { rows, cols },
+                InputEvent::Paste(s) => Event::Paste(s),
+                _ => continue,
+            };
+            self.process_event(translated)?;
         }
         Ok(())
     }

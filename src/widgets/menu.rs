@@ -133,15 +133,15 @@ impl<U> Widget<U> for Menu<U> {
         event_tx: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         match event {
-            Event::Input(InputEvent::Key(KeyEvent { key, .. })) => match key {
+            Event::Key(KeyEvent { key, .. }) => match key {
                 KeyCode::UpArrow => self.prev(),
                 KeyCode::DownArrow => self.next(),
                 KeyCode::Enter => self.select(event_tx),
                 _ => {}
             },
-            Event::Input(InputEvent::Mouse(MouseEvent {
+            Event::Mouse(MouseEvent {
                 y, mouse_buttons, ..
-            })) => {
+            }) => {
                 if mouse_buttons == MouseButtons::LEFT {
                     if y as usize <= self.items.len() {
                         self.active = y as usize;

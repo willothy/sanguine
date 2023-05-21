@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use crate::{
     error::Error,
     error::Result,
-    event::{Event, InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent, UserEvent},
+    event::{Event, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent, UserEvent},
     layout::Rect,
     surface::{Change, Position, Surface},
     widget::Widget,
@@ -184,7 +184,7 @@ impl<U> Widget<U> for TextBox {
     ) -> crate::error::Result<()> {
         self.validate_cursor();
         match event {
-            Event::Input(InputEvent::Key(KeyEvent { key, modifiers })) => {
+            Event::Key(KeyEvent { key, modifiers }) => {
                 if modifiers == Modifiers::NONE || modifiers == Modifiers::SHIFT {
                     match key {
                         KeyCode::Char(c) => self.write_char(c)?,
@@ -244,12 +244,12 @@ impl<U> Widget<U> for TextBox {
                 }
                 Ok(())
             }
-            Event::Input(InputEvent::Mouse(MouseEvent {
+            Event::Mouse(MouseEvent {
                 x,
                 y,
                 mouse_buttons,
                 modifiers: _,
-            })) => {
+            }) => {
                 if mouse_buttons == MouseButtons::LEFT {
                     self.set_cursor(x as usize, y as usize);
                 }
