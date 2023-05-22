@@ -152,7 +152,12 @@ impl TextBox {
 }
 
 impl<U> Widget<U> for TextBox {
-    fn render(&self, _layout: &crate::layout::Layout<U>, surface: &mut Surface, _focused: bool) {
+    fn render(
+        &self,
+        _layout: &crate::layout::Layout<U>,
+        surface: &mut Surface,
+        _focused: bool,
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>> {
         let (width, height) = surface.dimensions();
         self.buf
             .read()
@@ -168,12 +173,13 @@ impl<U> Widget<U> for TextBox {
                         y: Position::Relative(1),
                     });
                 }
-                surface.add_change(Change::Text(l.to_string()));
+                surface.add_change(Change::Text(format!("{}", l)));
             });
+        None
     }
 
-    fn cursor(&self) -> Option<(usize, usize)> {
-        Some((self.cursor.x, self.cursor.y))
+    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
+        Some((None, self.cursor.x, self.cursor.y))
     }
 
     fn update(

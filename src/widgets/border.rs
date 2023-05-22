@@ -4,7 +4,7 @@ use std::sync::{mpsc::Sender, Arc, RwLock};
 
 use crate::{
     error::Error,
-    event::{Event, MouseEvent, UserEvent},
+    event::{Event, UserEvent},
     layout::Rect,
     surface::*,
     Widget,
@@ -33,7 +33,12 @@ const BOTTOM_LEFT: char = '└';
 const BOTTOM_RIGHT: char = '┘';
 
 impl<U> Widget<U> for Border<U> {
-    fn render(&self, layout: &crate::layout::Layout<U>, surface: &mut Surface, focused: bool) {
+    fn render(
+        &self,
+        _layout: &crate::layout::Layout<U>,
+        surface: &mut Surface,
+        focused: bool,
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>> {
         let (width, height) = surface.dimensions();
         let mut changes = vec![];
         changes.push(Change::Text(TOP_LEFT.to_string()));
@@ -80,26 +85,27 @@ impl<U> Widget<U> for Border<U> {
         surface.add_changes(changes);
 
         // Draw inner widget
-        let mut inner_screen = Surface::new(width - 2, height - 2);
-        self.inner
-            .read()
-            .unwrap()
-            .render(layout, &mut inner_screen, focused);
-        surface.draw_from_screen(&inner_screen, 1, 1);
+        let inner_rect = Rect {
+            x: 1.,
+            y: 1.,
+            width: (width - 2) as f32,
+            height: (height - 2) as f32,
+        };
+        Some(vec![(inner_rect, self.inner.clone())])
     }
 
-    fn cursor(&self) -> Option<(usize, usize)> {
+    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
         self.inner
             .read()
             .unwrap()
             .cursor()
-            .map(|(x, y)| (x + 1, y + 1))
+            .map(|(_, x, y)| (Some(0), x, y))
     }
 
     fn update(
         &mut self,
         rect: &Rect,
-        mut event: Event<U>,
+        event: Event<U>,
         exit_tx: Arc<Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         let rect = Rect {
@@ -108,11 +114,6 @@ impl<U> Widget<U> for Border<U> {
             width: rect.width - 2.,
             height: rect.height - 2.,
         };
-
-        if let Event::Mouse(MouseEvent { x, y, .. }) = &mut event {
-            *x -= 2;
-            *y -= 2;
-        }
 
         self.inner
             .write()

@@ -1,11 +1,10 @@
 use std::sync::{Arc, RwLock};
 
-use crate::{
-    slab::{NodeId, Slab},
-    Widget,
-};
+use slotmap::SlotMap;
 
-use super::{Direction, LayoutNode, Rect};
+use crate::Widget;
+
+use super::{Direction, LayoutNode, NodeId, Rect};
 
 pub struct Floating<U> {
     /// The widget to be rendered
@@ -86,7 +85,7 @@ impl<U> FloatStack<U> {
         self.inner.retain(|v| *v != node);
     }
 
-    pub fn sort(&mut self, nodes: &Slab<LayoutNode<U>>) {
+    pub fn sort(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U>>) {
         self.inner.sort_by(|a, b| {
             nodes
                 .get(*b)
@@ -101,12 +100,12 @@ impl<U> FloatStack<U> {
         })
     }
 
-    pub fn push(&mut self, node: NodeId, nodes: &Slab<LayoutNode<U>>) {
+    pub fn push(&mut self, node: NodeId, nodes: &SlotMap<NodeId, LayoutNode<U>>) {
         self.inner.push(node);
         self.sort(nodes);
     }
 
-    pub fn pop(&mut self, nodes: &Slab<LayoutNode<U>>) -> Option<NodeId> {
+    pub fn pop(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U>>) -> Option<NodeId> {
         self.inner.pop()
     }
 

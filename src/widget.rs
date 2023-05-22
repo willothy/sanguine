@@ -1,4 +1,4 @@
-use std::sync::{mpsc::Sender, Arc};
+use std::sync::{mpsc::Sender, Arc, RwLock};
 
 use crate::{
     event::{Event, UserEvent},
@@ -17,7 +17,12 @@ use crate::{
 pub trait Widget<U> {
     /// This method is called every render loop, and is responsible for rendering the widget onto
     /// the provided surface.
-    fn render(&self, layout: &Layout<U>, surface: &mut Surface, focused: bool);
+    fn render(
+        &self,
+        layout: &Layout<U>,
+        surface: &mut Surface,
+        focused: bool,
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>>;
 
     #[allow(unused_variables)]
     /// This method is called when an input event is received that targets this widget.
@@ -33,7 +38,7 @@ pub trait Widget<U> {
 
     /// This method is called when the widget is focused, to determine where (or if) to display the
     /// cursor.
-    fn cursor(&self) -> Option<(usize, usize)> {
+    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
         None
     }
 

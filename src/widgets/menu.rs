@@ -1,3 +1,4 @@
+use std::sync::RwLock;
 use std::sync::{mpsc::Sender, Arc};
 
 use termwiz::surface::Surface;
@@ -83,7 +84,12 @@ impl<U> Menu<U> {
 }
 
 impl<U> Widget<U> for Menu<U> {
-    fn render(&self, _layout: &Layout<U>, surface: &mut Surface, _focused: bool) {
+    fn render(
+        &self,
+        _layout: &Layout<U>,
+        surface: &mut Surface,
+        _focused: bool,
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>> {
         let dims = surface.dimensions();
         surface.add_changes(vec![Change::CursorPosition {
             x: Position::Absolute(0),
@@ -124,11 +130,12 @@ impl<U> Widget<U> for Menu<U> {
                 },
             ]);
         }
+        None
     }
 
     fn update(
         &mut self,
-        _: &Rect,
+        _bounds: &Rect,
         event: Event<U>,
         event_tx: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
@@ -143,13 +150,13 @@ impl<U> Widget<U> for Menu<U> {
                 y, mouse_buttons, ..
             }) => {
                 if mouse_buttons == MouseButtons::LEFT {
-                    if y as usize <= self.items.len() {
-                        self.active = y as usize;
+                    if (y as usize) <= self.items.len() + 1 && y >= 2 {
+                        self.active = y as usize - 2;
                         self.select(event_tx);
                     }
                 } else if mouse_buttons == MouseButtons::NONE {
-                    if (y as usize) < self.items.len() {
-                        self.active = y as usize;
+                    if (y as usize) <= self.items.len() + 1 && y >= 2 {
+                        self.active = y as usize - 2;
                     }
                 }
             }

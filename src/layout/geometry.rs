@@ -6,6 +6,30 @@ pub struct Rect {
     pub height: f32,
 }
 
+#[cfg(feature = "tui")]
+impl From<tui::layout::Rect> for Rect {
+    fn from(value: tui::layout::Rect) -> Self {
+        Self {
+            x: value.x as f32,
+            y: value.y as f32,
+            width: value.width as f32,
+            height: value.height as f32,
+        }
+    }
+}
+
+#[cfg(feature = "tui")]
+impl Into<tui::layout::Rect> for Rect {
+    fn into(self) -> tui::layout::Rect {
+        tui::layout::Rect {
+            x: self.x as u16,
+            y: self.y as u16,
+            width: self.width as u16,
+            height: self.height as u16,
+        }
+    }
+}
+
 impl Rect {
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
         Self {

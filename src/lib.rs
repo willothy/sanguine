@@ -165,15 +165,14 @@ pub mod prelude {
     pub use crate::error::*;
     pub use crate::event::*;
     pub use crate::layout::*;
-    pub use crate::slab::NodeId;
     pub use crate::surface::{Change, Position, Surface, Terminal};
     pub use crate::widgets::{Border, TextBox};
 }
 
 mod app;
+pub mod bridge;
 pub mod error;
 pub mod event;
 pub mod layout;
-mod slab;
 mod widget;
 pub mod widgets;

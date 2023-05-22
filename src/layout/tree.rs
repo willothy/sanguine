@@ -3,12 +3,17 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use slotmap::{new_key_type, SlotMap};
+
 use super::{
     floating::{FloatStack, Floating},
     geometry::{Axis, Constraint, Direction, Rect},
 };
-use crate::slab::{NodeId, Slab};
 use crate::widget::Widget;
+
+new_key_type! {
+    pub struct NodeId;
+}
 
 pub struct Leaf<U> {
     widget: Arc<RwLock<dyn Widget<U>>>,
@@ -93,7 +98,7 @@ impl<U> LayoutNode<U> {
 
 pub struct Layout<U> {
     /// The arena containing all nodes, keyed by unique id.
-    nodes: Slab<LayoutNode<U>>,
+    nodes: SlotMap<NodeId, LayoutNode<U>>,
     /// Render results. Will be stale or zeroed if `Layout::compute()` isn't called after each
     /// change.
     layout: HashMap<NodeId, Rect>,
@@ -114,7 +119,7 @@ impl<U> Default for Layout<U> {
 impl<U> Layout<U> {
     /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
-        let mut nodes = Slab::new();
+        let mut nodes = SlotMap::with_key();
         let root = nodes.insert(LayoutNode::Container(Container {
             direction: Axis::Vertical,
             size: None,
@@ -503,8 +508,8 @@ impl<U> Layout<U> {
     }
 
     /// Get the floats of the layout tree
-    pub fn floats(&self) -> impl Iterator<Item = &NodeId> {
-        self.floating.iter()
+    pub fn floats(&self) -> Vec<NodeId> {
+        self.floating.iter().copied().collect()
     }
 
     /// Traverse the layout tree
@@ -628,25 +633,6 @@ impl<U> Layout<U> {
         self.layout.insert(id, rect);
         self.floating.push(id, &self.nodes);
         id
-    }
-
-    pub fn make_floating(&mut self, node: NodeId, rect: Rect) {
-        self.dirty = true;
-        if !self.is_leaf(node) {
-            return;
-        }
-        let widget = self.widget(node).unwrap();
-        if let Some(leaf) = self.nodes.get_mut(node) {
-            if let Some(parent) = leaf.leaf().as_ref().unwrap().parent {
-                if let Some(LayoutNode::Container(container)) = self.nodes.get_mut(parent) {
-                    container.children.retain(|v| *v != node);
-                }
-            }
-            let floating = Floating::from_widget(widget, rect);
-            let new = LayoutNode::Floating(floating);
-            *leaf = new;
-        }
-        self.floating.push(node, &self.nodes);
     }
 
     pub fn make_leaf(&mut self, node: NodeId) {
