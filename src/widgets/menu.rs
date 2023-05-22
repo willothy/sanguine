@@ -40,11 +40,11 @@ impl<U> Menu<U> {
     }
 
     pub fn next(&mut self) {
-        self.active = (self.active + 1) % self.items.len();
+        self.active = (self.active + 1) % self.items.len().max(1);
     }
 
     pub fn prev(&mut self) {
-        self.active = (self.active + self.items.len() - 1) % self.items.len();
+        self.active = (self.active + self.items.len() - 1) % self.items.len().max(1);
     }
 
     pub fn select(&mut self, event_tx: Arc<Sender<UserEvent<U>>>) {
@@ -76,6 +76,14 @@ impl<U> Menu<U> {
         if let Some((t, _, _)) = self.items.get_mut(index) {
             *t = f(t);
         }
+    }
+
+    pub fn clear(&mut self) {
+        self.items.clear();
+    }
+
+    pub fn remove(&mut self, index: usize) {
+        self.items.remove(index);
     }
 
     pub fn update_menu_title(&mut self, f: impl Fn(&str) -> String) {
@@ -135,7 +143,9 @@ impl<U> Widget<U> for Menu<U> {
 
     fn update(
         &mut self,
+        _owner: NodeId,
         _bounds: &Rect,
+        _layout: &mut Layout<U>,
         event: Event<U>,
         event_tx: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {

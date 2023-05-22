@@ -159,6 +159,14 @@ pub mod surface {
     }
 }
 
+/// Re-exports from termwiz relating to text style
+pub mod style {
+    pub use termwiz::{
+        cell::{CellAttributes, Intensity, Underline},
+        color::{AnsiColor, ColorAttribute, RgbColor},
+    };
+}
+
 /// Commonly used types from Sanguine and termwiz
 pub mod prelude {
     pub use crate::app::{App, Config};

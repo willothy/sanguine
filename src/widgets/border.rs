@@ -6,6 +6,7 @@ use crate::{
     error::Error,
     event::{Event, UserEvent},
     layout::Rect,
+    prelude::{Layout, NodeId},
     surface::*,
     Widget,
 };
@@ -21,6 +22,16 @@ impl<U> Border<U> {
         Self {
             title: title.into(),
             inner: Arc::new(RwLock::new(inner)),
+        }
+    }
+
+    pub fn from_inner(
+        title: impl Into<String>,
+        inner: Arc<RwLock<impl Widget<U> + 'static>>,
+    ) -> Self {
+        Self {
+            title: title.into(),
+            inner,
         }
     }
 }
@@ -104,21 +115,23 @@ impl<U> Widget<U> for Border<U> {
 
     fn update(
         &mut self,
-        rect: &Rect,
+        owner: NodeId,
+        bounds: &Rect,
+        layout: &mut Layout<U>,
         event: Event<U>,
         exit_tx: Arc<Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         let rect = Rect {
-            x: rect.x + 1.,
-            y: rect.y + 1.,
-            width: rect.width - 2.,
-            height: rect.height - 2.,
+            x: bounds.x + 1.,
+            y: bounds.y + 1.,
+            width: bounds.width - 2.,
+            height: bounds.height - 2.,
         };
 
         self.inner
             .write()
             .map_err(|_| Error::external("could not lock widget"))?
-            .update(&rect, event, exit_tx)?;
+            .update(owner, &rect, layout, event, exit_tx)?;
         Ok(())
     }
 }

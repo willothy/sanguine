@@ -5,6 +5,7 @@ use crate::{
     error::Result,
     event::{Event, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent, UserEvent},
     layout::Rect,
+    prelude::{Layout, NodeId},
     surface::{Change, Position, Surface},
     widget::Widget,
 };
@@ -31,6 +32,15 @@ impl TextBox {
     pub fn new() -> Self {
         Self {
             buf: Arc::new(RwLock::new(vec![String::new()])),
+            cursor: Cursor { x: 0, y: 0 },
+        }
+    }
+
+    pub fn from_str(s: impl Into<String>) -> Self {
+        Self {
+            buf: Arc::new(RwLock::new(
+                s.into().lines().map(|s| s.to_owned()).collect(),
+            )),
             cursor: Cursor { x: 0, y: 0 },
         }
     }
@@ -184,7 +194,9 @@ impl<U> Widget<U> for TextBox {
 
     fn update(
         &mut self,
-        layout: &Rect,
+        _owner: NodeId,
+        _rect: &Rect,
+        _layout: &mut Layout<U>,
         event: Event<U>,
         _: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
@@ -230,16 +242,20 @@ impl<U> Widget<U> for TextBox {
                             self.set_cursor_y(self.cursor.y.saturating_sub(1));
                         }
                         KeyCode::DownArrow => {
-                            self.set_cursor_y(
-                                self.cursor.y.saturating_add(1).min(layout.height as usize),
-                            );
+                            let lines = self.buf.read().unwrap().len();
+                            self.set_cursor_y(self.cursor.y.saturating_add(1).min(lines));
                         }
                         KeyCode::LeftArrow => {
                             self.set_cursor_x(self.cursor.x.saturating_sub(1));
                         }
                         KeyCode::RightArrow => {
                             self.set_cursor_x(
-                                self.cursor.x.saturating_add(1).min(layout.width as usize),
+                                self.cursor.x.saturating_add(1), // .min(
+                                                                 //     self.buf
+                                                                 //         .read()
+                                                                 //         .map(|v| v.get(self.cursor.x).map(|l| l.len()).unwrap_or(0))
+                                                                 //         .unwrap_or(0),
+                                                                 // ),
                             );
                         }
                         KeyCode::Backspace => {

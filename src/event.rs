@@ -5,6 +5,7 @@ pub use termwiz::input::{KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent}
 #[derive(Debug)]
 pub enum UserEvent<U> {
     Exit,
+    Tick,
     User(U),
 }
 

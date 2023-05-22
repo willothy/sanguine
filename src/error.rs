@@ -1,5 +1,7 @@
 //! Error handling
 
+use std::fmt::Display;
+
 use crate::layout::NodeId;
 
 #[derive(Debug, thiserror::Error)]
@@ -25,8 +27,8 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn external<T: Into<String>>(msg: T) -> Self {
-        Self::External(msg.into())
+    pub fn external(msg: impl Display) -> Self {
+        Self::External(msg.to_string())
     }
 }
 

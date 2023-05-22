@@ -29,7 +29,9 @@ pub trait Widget<U> {
     /// It allows the widget to update its internal state in response to an event.
     fn update(
         &mut self,
+        owner: NodeId,
         bounds: &Rect,
+        layout: &mut Layout<U>,
         event: Event<U>,
         event_tx: Arc<Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {

@@ -626,6 +626,15 @@ impl<U> Layout<U> {
         id
     }
 
+    /// Adds a new leaf from Arc'd widget
+    pub fn add_leaf_raw(&mut self, widget: Arc<RwLock<dyn Widget<U>>>) -> NodeId {
+        self.dirty = true;
+        let node = LayoutNode::Leaf(Leaf::from_widget(widget));
+        let id = self.nodes.insert(node);
+        self.layout.insert(id, Rect::default());
+        id
+    }
+
     pub fn add_floating(&mut self, widget: impl Widget<U> + 'static, rect: Rect) -> NodeId {
         self.dirty = true;
         let node = LayoutNode::Floating(Floating::new(widget, rect.clone()));
@@ -744,6 +753,11 @@ impl<U> Layout<U> {
     /// Checks if the given node is a leaf node.
     pub fn is_leaf(&self, node: NodeId) -> bool {
         matches!(self.nodes.get(node), Some(LayoutNode::Leaf(_)))
+    }
+
+    /// Checks if the given node is a container node.
+    pub fn is_container(&self, node: NodeId) -> bool {
+        matches!(self.nodes.get(node), Some(LayoutNode::Container(_)))
     }
 
     /// If the given node is a container, returns a reference to its children.

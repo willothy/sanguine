@@ -163,11 +163,7 @@ impl<U: 'static> App<U> {
                         };
 
                         // check if there are inner widgets that the event should be sent to
-                        let children = self
-                            .rendered
-                            .get(focus)
-                            .cloned()
-                            .ok_or(Error::WidgetNotFound(focus))?;
+                        let children = self.rendered.get(focus).cloned().unwrap_or(vec![]);
                         let child = children
                             .iter()
                             .filter(|(rect, _)| rect.contains(x as f32, y as f32))
@@ -200,7 +196,13 @@ impl<U: 'static> App<U> {
                         widget
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
-                            .update(&layout, offset_event, self.event_tx.clone())?;
+                            .update(
+                                focus,
+                                &layout,
+                                &mut self.layout,
+                                offset_event,
+                                self.event_tx.clone(),
+                            )?;
                     } else if *mouse_buttons == MouseButtons::LEFT
                         || self.config.focus_follows_hover
                     {
@@ -218,14 +220,32 @@ impl<U: 'static> App<U> {
                 if !self.global_event(&event)? {
                     let Some(focus) = self.focus else {
                         // If there's no focus, we can't do anything
-                        return Ok(());
+                        let Some(leaf) = self.layout.leaves().first().cloned() else {
+                            return Ok(());
+                        };
+                        self.set_focus(leaf)?;
+                        return Ok(())
                     };
-                    let (widget, layout) = self.render_ctx(focus)?;
+                    // Retrieve widget trait object from node
+                    let Some(widget) = self
+                        .layout
+                        .widget(focus) else {
+                            return Ok(());
+                        };
+
+                    // Retrieve computed layout for window
+                    let Some(layout) = self
+                        .layout
+                        .layout(focus)
+                        .cloned() else {
+                            return Ok(());
+                        };
+                    let tx = self.event_tx.clone();
 
                     widget
                         .write()
                         .map_err(|_| Error::WidgetWriteLockError(focus))?
-                        .update(layout, event, self.event_tx.clone())?;
+                        .update(focus, &layout, &mut self.layout, event, tx)?;
                 };
             }
         }
@@ -289,7 +309,7 @@ impl<U: 'static> App<U> {
 
     /// Sets the focus to the given node.
     pub fn set_focus(&mut self, node: NodeId) -> Result<()> {
-        if !self.layout.is_leaf(node) {
+        if self.layout.is_container(node) {
             return Err(Error::ExpectedLeaf(node));
         }
         self.focus = Some(node);
@@ -425,30 +445,31 @@ impl<U: 'static> App<U> {
         self.term.draw_from_screen(&screen, 0, 0);
 
         if let Some(focus) = self.focus {
-            let layout = self.layout.layout(focus).unwrap();
-            if let Some(cursor) = self.layout.widget(focus).unwrap().read().unwrap().cursor() {
-                if let Some(child) = cursor.0 {
-                    let child = self.rendered.get(focus).unwrap().get(child).unwrap();
-                    // let cursor = child.1.read().unwrap().cursor().unwrap();
-                    self.term.add_changes(vec![
-                        Change::CursorVisibility(CursorVisibility::Visible),
-                        Change::CursorPosition {
-                            x: Position::Absolute((child.0.x) as usize + cursor.1),
-                            y: Position::Absolute((child.0.y) as usize + cursor.2),
-                        },
-                    ]);
+            if let Some(layout) = self.layout.layout(focus) {
+                if let Some(cursor) = self.layout.widget(focus).unwrap().read().unwrap().cursor() {
+                    if let Some(child) = cursor.0 {
+                        let child = self.rendered.get(focus).unwrap().get(child).unwrap();
+                        // let cursor = child.1.read().unwrap().cursor().unwrap();
+                        self.term.add_changes(vec![
+                            Change::CursorVisibility(CursorVisibility::Visible),
+                            Change::CursorPosition {
+                                x: Position::Absolute((child.0.x) as usize + cursor.1),
+                                y: Position::Absolute((child.0.y) as usize + cursor.2),
+                            },
+                        ]);
+                    } else {
+                        self.term.add_changes(vec![
+                            Change::CursorVisibility(CursorVisibility::Visible),
+                            Change::CursorPosition {
+                                x: Position::Absolute(layout.x as usize + cursor.1),
+                                y: Position::Absolute(layout.y as usize + cursor.2),
+                            },
+                        ]);
+                    }
                 } else {
-                    self.term.add_changes(vec![
-                        Change::CursorVisibility(CursorVisibility::Visible),
-                        Change::CursorPosition {
-                            x: Position::Absolute(layout.x as usize + cursor.1),
-                            y: Position::Absolute(layout.y as usize + cursor.2),
-                        },
-                    ]);
+                    self.term
+                        .add_changes(vec![Change::CursorVisibility(CursorVisibility::Hidden)]);
                 }
-            } else {
-                self.term
-                    .add_changes(vec![Change::CursorVisibility(CursorVisibility::Hidden)]);
             }
         }
 
