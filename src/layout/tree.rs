@@ -1,9 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
-use slotmap::{new_key_type, SlotMap};
+use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use super::{
     floating::{FloatStack, Floating},
@@ -101,7 +98,7 @@ pub struct Layout<U = (), S = ()> {
     nodes: SlotMap<NodeId, LayoutNode<U, S>>,
     /// Render results. Will be stale or zeroed if `Layout::compute()` isn't called after each
     /// change.
-    layout: HashMap<NodeId, Rect>,
+    layout: SecondaryMap<NodeId, Rect>,
     /// The root node of the layout.
     root: NodeId,
     /// Floating windows attached to the layout
@@ -120,17 +117,19 @@ impl<U, S> Layout<U, S> {
     /// Initializes a new layout, and creates a root node
     pub fn new() -> Self {
         let mut nodes = SlotMap::with_key();
+        let mut layout = SecondaryMap::new();
         let root = nodes.insert(LayoutNode::Container(Container {
             direction: Axis::Vertical,
             size: None,
             children: vec![],
             parent: None,
         }));
+        layout.insert(root, Rect::default());
         Self {
             nodes,
+            layout,
             root,
             floating: FloatStack::new(),
-            layout: HashMap::from([(root, Rect::default())]),
             // True so that the first call to `compute` will always recompute the layout
             dirty: true,
         }
@@ -483,7 +482,7 @@ impl<U, S> Layout<U, S> {
 
     /// Retrieve the computed layout for a given node
     pub fn layout(&self, node: NodeId) -> Option<&Rect> {
-        self.layout.get(&node)
+        self.layout.get(node)
     }
 
     /// Helper for gathering leaves recursively
@@ -554,7 +553,7 @@ impl<U, S> Layout<U, S> {
     pub fn remove_node(&mut self, node: NodeId) {
         self.dirty = true;
         self.nodes.remove(node);
-        self.layout.remove(&node);
+        self.layout.remove(node);
     }
 
     /// Sets the size hint for a container
