@@ -11,11 +11,13 @@ keywords = ["tui", "terminal", "user-interface"]
 categories = ["gui", "command-line-interface"]
 
 [features]
-default = ["tui"]
-tui = ["dep:tui"]
+default = ["tui", "ansi"]
+tui = ["dep:ratatui"]
+ansi = ["tui", "dep:ansi-to-tui"]
 
 [dependencies]
 slotmap = "1.0.6"
 termwiz = "0.20.0"
 thiserror = "1.0.40"
-tui = { version = "0.19.0", optional = true }
+ratatui = { version = "0.20", optional = true }
+ansi-to-tui = { version = "3.0.0", optional = true }

@@ -12,20 +12,20 @@ use termwiz::{
 pub struct BridgeInner<'a>(&'a mut Surface);
 
 pub trait Bridge {
-    fn bridge<'a>(&'a mut self) -> tui::Terminal<BridgeInner<'a>>;
+    fn bridge<'a>(&'a mut self) -> ratatui::Terminal<BridgeInner<'a>>;
 }
 
 impl Bridge for &mut Surface {
-    fn bridge<'a>(&'a mut self) -> tui::Terminal<BridgeInner<'a>> {
-        tui::Terminal::new(BridgeInner(self)).expect("this should not fail")
+    fn bridge<'a>(&'a mut self) -> ratatui::Terminal<BridgeInner<'a>> {
+        ratatui::Terminal::new(BridgeInner(self)).expect("this should not fail")
     }
 }
 
-struct TuiColor(tui::style::Color);
+struct TuiColor(ratatui::style::Color);
 
 impl Into<ColorAttribute> for TuiColor {
     fn into(self) -> ColorAttribute {
-        use tui::style::Color::*;
+        use ratatui::style::Color::*;
         match self {
             TuiColor(Reset) => ColorAttribute::Default,
             TuiColor(Black) => AnsiColor::Black.into(),
@@ -52,10 +52,10 @@ impl Into<ColorAttribute> for TuiColor {
     }
 }
 
-impl<'surface> tui::backend::Backend for BridgeInner<'surface> {
+impl<'surface> ratatui::backend::Backend for BridgeInner<'surface> {
     fn draw<'a, I>(&mut self, content: I) -> std::result::Result<(), std::io::Error>
     where
-        I: Iterator<Item = (u16, u16, &'a tui::buffer::Cell)>,
+        I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
     {
         for (x, y, cell) in content {
             let style = cell.style();
@@ -68,15 +68,15 @@ impl<'surface> tui::backend::Backend for BridgeInner<'surface> {
                 .map(|v| TuiColor(v).into())
                 .unwrap_or(ColorAttribute::Default);
             let modifier = style.add_modifier;
-            let bold = modifier.contains(tui::style::Modifier::BOLD);
-            let italic = modifier.contains(tui::style::Modifier::ITALIC);
-            let _dim = modifier.contains(tui::style::Modifier::DIM);
-            let underline = modifier.contains(tui::style::Modifier::UNDERLINED);
-            let reverse = modifier.contains(tui::style::Modifier::REVERSED);
-            let hidden = modifier.contains(tui::style::Modifier::HIDDEN);
-            let strikethrough = modifier.contains(tui::style::Modifier::CROSSED_OUT);
-            let slow_blink = modifier.contains(tui::style::Modifier::SLOW_BLINK);
-            let rapid_blink = modifier.contains(tui::style::Modifier::RAPID_BLINK);
+            let bold = modifier.contains(ratatui::style::Modifier::BOLD);
+            let italic = modifier.contains(ratatui::style::Modifier::ITALIC);
+            let _dim = modifier.contains(ratatui::style::Modifier::DIM);
+            let underline = modifier.contains(ratatui::style::Modifier::UNDERLINED);
+            let reverse = modifier.contains(ratatui::style::Modifier::REVERSED);
+            let hidden = modifier.contains(ratatui::style::Modifier::HIDDEN);
+            let strikethrough = modifier.contains(ratatui::style::Modifier::CROSSED_OUT);
+            let slow_blink = modifier.contains(ratatui::style::Modifier::SLOW_BLINK);
+            let rapid_blink = modifier.contains(ratatui::style::Modifier::RAPID_BLINK);
 
             // add style
             let mut attr = CellAttributes::default();
@@ -148,9 +148,14 @@ impl<'surface> tui::backend::Backend for BridgeInner<'surface> {
         Ok(())
     }
 
-    fn size(&self) -> std::result::Result<tui::layout::Rect, std::io::Error> {
+    fn size(&self) -> std::result::Result<ratatui::layout::Rect, std::io::Error> {
         let dims = self.0.dimensions();
-        Ok(tui::layout::Rect::new(0, 0, dims.0 as u16, dims.1 as u16))
+        Ok(ratatui::layout::Rect::new(
+            0,
+            0,
+            dims.0 as u16,
+            dims.1 as u16,
+        ))
     }
 
     fn flush(&mut self) -> std::result::Result<(), std::io::Error> {

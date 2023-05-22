@@ -7,8 +7,8 @@ pub struct Rect {
 }
 
 #[cfg(feature = "tui")]
-impl From<tui::layout::Rect> for Rect {
-    fn from(value: tui::layout::Rect) -> Self {
+impl From<ratatui::layout::Rect> for Rect {
+    fn from(value: ratatui::layout::Rect) -> Self {
         Self {
             x: value.x as f32,
             y: value.y as f32,
@@ -19,9 +19,9 @@ impl From<tui::layout::Rect> for Rect {
 }
 
 #[cfg(feature = "tui")]
-impl Into<tui::layout::Rect> for Rect {
-    fn into(self) -> tui::layout::Rect {
-        tui::layout::Rect {
+impl Into<ratatui::layout::Rect> for Rect {
+    fn into(self) -> ratatui::layout::Rect {
+        ratatui::layout::Rect {
             x: self.x as u16,
             y: self.y as u16,
             width: self.width as u16,

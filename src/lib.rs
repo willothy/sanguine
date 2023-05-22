@@ -177,6 +177,7 @@ pub mod prelude {
     pub use crate::widgets::{Border, TextBox};
 }
 
+pub mod ansi;
 mod app;
 pub mod bridge;
 pub mod error;
