@@ -1,0 +1,9 @@
+[package]
+name = "example-markdown-preview"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+sanguine = { path = "../../", features = ["ansi"] }
+termimad = "0.23.0"
