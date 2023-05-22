@@ -1,9 +1,11 @@
 use std::sync::RwLock;
 use std::sync::{mpsc::Sender, Arc};
 
-use termwiz::surface::Surface;
+use termwiz::input::{KeyCode, KeyEvent, MouseButtons, MouseEvent};
+use termwiz::surface::{Change, Position, Surface};
 
-use crate::prelude::*;
+use crate::event::Event;
+use crate::layout::Rect;
 use crate::widget::{RenderCtx, UpdateCtx};
 use crate::{event::UserEvent, Widget};
 use termwiz::{

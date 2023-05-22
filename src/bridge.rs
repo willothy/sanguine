@@ -1,3 +1,7 @@
+//! Bridge for rendering [`ratatui`] apps into Sanguine widgets
+//!
+//! Will support other sources in the future - for now, they can be implemented using the
+//! [`crate::ansi`] utility.
 #![cfg(feature = "tui")]
 
 use ratatui::style::Modifier;
@@ -9,22 +13,27 @@ use termwiz::{
 
 /// Bridge for implementing backends for other TUI libraries
 ///
-/// Required since `Surface` isn't implemented in this crate.
+/// Required since [`Surface`] isn't implemented in this crate.
 pub struct BridgeInner<'a>(&'a mut Surface);
 
+/// Provides the methods for creating a temporary backend for another TUI library to render onto a
+/// [`Surface`]
 pub trait Bridge {
-    fn bridge<'a>(&'a mut self) -> ratatui::Terminal<BridgeInner<'a>>;
+    fn ratatui<'a>(&'a mut self) -> ratatui::Terminal<BridgeInner<'a>>;
 }
 
 impl Bridge for &mut Surface {
-    fn bridge<'a>(&'a mut self) -> ratatui::Terminal<BridgeInner<'a>> {
+    fn ratatui<'a>(&'a mut self) -> ratatui::Terminal<BridgeInner<'a>> {
         ratatui::Terminal::new(BridgeInner(self)).expect("this should not fail")
     }
 }
 
-pub(crate) struct TuiColor(ratatui::style::Color);
-pub(crate) struct TuiStyle(ratatui::style::Style);
+/// Wrapper type for converting [`ratatui`] colors into other color types
+pub(crate) struct TuiColor(pub(crate) ratatui::style::Color);
+/// Wrapper type for converting [`ratatui`] styles into other style types
+pub(crate) struct TuiStyle(pub(crate) ratatui::style::Style);
 
+/// Convert [`ratatui`] style into [`termwiz`] style
 impl Into<CellAttributes> for TuiStyle {
     fn into(self) -> CellAttributes {
         let fg = self
@@ -72,18 +81,7 @@ impl Into<CellAttributes> for TuiStyle {
     }
 }
 
-impl TuiColor {
-    pub fn new(color: ratatui::style::Color) -> Self {
-        Self(color)
-    }
-}
-
-impl TuiStyle {
-    pub fn new(style: ratatui::style::Style) -> Self {
-        Self(style)
-    }
-}
-
+/// Convert [`ratatui`] colors into [`termwiz`] colors
 impl Into<ColorAttribute> for TuiColor {
     fn into(self) -> ColorAttribute {
         use ratatui::style::Color::*;

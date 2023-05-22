@@ -96,7 +96,7 @@ impl<U, S> LayoutNode<U, S> {
 pub struct Layout<U = (), S = ()> {
     /// The arena containing all nodes, keyed by unique id.
     nodes: SlotMap<NodeId, LayoutNode<U, S>>,
-    /// Render results. Will be stale or zeroed if `Layout::compute()` isn't called after each
+    /// Render results. Will be stale or zeroed if [`Layout::compute`] isn't called after each
     /// change.
     layout: SecondaryMap<NodeId, Rect>,
     /// The root node of the layout.

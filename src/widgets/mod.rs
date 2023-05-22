@@ -1,4 +1,4 @@
-//! Built-in widgets.
+//! Built-in widgets
 
 mod border;
 mod menu;

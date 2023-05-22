@@ -16,11 +16,11 @@ use crate::{
 
 /// Contains configuration options for the Sanguine application.
 pub struct Config {
-    /// Whether or not to quit on ctrl-q (default: true)
+    /// Whether or not to quit on <kbd>ctrl</kbd>+<kbd>q</kbd> `default: true`
     ///
     /// Set to false if you implement your own exit handling.
     pub ctrl_q_quit: bool,
-    /// Whether or not to focus a window when the mouse hovers over it (default: false)
+    /// Whether or not to focus a window when the mouse hovers over it `default: false`
     pub focus_follows_hover: bool,
 }
 
@@ -30,7 +30,7 @@ impl Config {
         Default::default()
     }
 
-    /// Set whether or not to quit on ctrl-q
+    /// Set whether or not to quit on <kbd>ctrl</kbd>+<kbd>q</kbd>
     pub fn ctrl_q_quit(mut self, ctrl_q_quit: bool) -> Self {
         self.ctrl_q_quit = ctrl_q_quit;
         self
