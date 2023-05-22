@@ -16,6 +16,9 @@ It is built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`, wh
   - Automatic propagation
   - Hover and click support
 - Global and widget-local event handlers
+- Generic API
+  - Custom user event type for message passing
+  - Custom state type for core app state
 - Focus
   - Switch focus by direction or directly
 
