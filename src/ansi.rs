@@ -8,7 +8,7 @@ use termwiz::{
 };
 
 use crate::{
-    bridge::{TuiColor, TuiStyle},
+    bridge::TuiStyle,
     error::{Error, Result},
 };
 
@@ -20,21 +20,20 @@ pub fn write_ansi(screen: &mut Surface, bytes: &str) -> Result<()> {
         l.0.into_iter().for_each(|span| {
             let content = span.content;
             let style = span.style;
-            let mut attr = CellAttributes::default();
-
-            style.fg.map(|c| attr.set_foreground(TuiColor(c)));
-            style.bg.map(|c| attr.set_background(TuiColor(c)));
-
             let style: CellAttributes = TuiStyle(style).into();
             screen.add_changes(vec![
                 Change::AllAttributes(style),
                 Change::Text(content.to_string()),
+                Change::AllAttributes(CellAttributes::default()),
             ]);
         });
-        screen.add_change(Change::CursorPosition {
-            x: Position::Relative(0),
-            y: Position::Relative(1),
-        });
+        screen.add_changes(vec![
+            Change::CursorPosition {
+                x: Position::Absolute(0),
+                y: Position::Relative(1),
+            },
+            Change::AllAttributes(CellAttributes::default()),
+        ]);
     });
     Ok(())
 }

@@ -11,7 +11,7 @@ keywords = ["tui", "terminal", "user-interface"]
 categories = ["gui", "command-line-interface"]
 
 [features]
-default = []
+default = ["tui"]
 tui = ["dep:ratatui"]
 ansi = ["tui", "dep:ansi-to-tui"]
 

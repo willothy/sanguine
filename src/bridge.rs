@@ -63,7 +63,6 @@ impl Into<CellAttributes> for TuiStyle {
             Intensity::Normal
         });
         attr.set_italic(modifier.contains(Modifier::ITALIC));
-        // todo: dim
         attr.set_underline(if modifier.contains(Modifier::UNDERLINED) {
             Underline::Single
         } else {
