@@ -3,6 +3,8 @@ use std::{
     time::Duration,
 };
 
+pub use crate::widget::{RenderCtx, UpdateCtx};
+
 use slotmap::SecondaryMap;
 
 use crate::{
@@ -10,7 +12,6 @@ use crate::{
     event::*,
     layout::*,
     surface::{term::*, *},
-    widget::{RenderCtx, UpdateCtx},
     Widget,
 };
 
@@ -76,7 +77,7 @@ pub struct App<S = (), U = ()> {
     /// Receiver for user events, only used internally
     event_rx: std::sync::mpsc::Receiver<UserEvent<U>>,
     /// Used to signal the exit internally
-    exit: AtomicBool,
+    exit: Arc<AtomicBool>,
     /// Global event handler, which intercepts events before they are propagated to the focused
     /// widget. If the handler returns `Ok(true)`, the event is considered handled and is not
     /// propagated to the widget that would otherwise receive it.
@@ -114,7 +115,7 @@ impl<S: Default + 'static, U: 'static> App<S, U> {
             global_event_handler: Box::new(|_, _, _| Ok(false)),
             size: Rect::from_size(term.dimensions()),
             event_tx: Arc::new(event_tx),
-            exit: AtomicBool::new(false),
+            exit: Arc::new(AtomicBool::new(false)),
             rendered: SecondaryMap::new(),
             focus: None,
             layout,
@@ -148,7 +149,7 @@ impl<S: Default + 'static, U: 'static> App<S, U> {
             global_event_handler: Box::new(handler),
             size: Rect::from_size(term.dimensions()),
             event_tx: Arc::new(event_tx),
-            exit: AtomicBool::new(false),
+            exit: Arc::new(AtomicBool::new(false)),
             rendered: SecondaryMap::new(),
             focus: None,
             layout,
@@ -177,7 +178,7 @@ impl<S: 'static, U: 'static> App<S, U> {
             global_event_handler: Box::new(|_, _, _| Ok(false)),
             size: Rect::from_size(term.dimensions()),
             event_tx: Arc::new(event_tx),
-            exit: AtomicBool::new(false),
+            exit: Arc::new(AtomicBool::new(false)),
             rendered: SecondaryMap::new(),
             focus: None,
             layout,
