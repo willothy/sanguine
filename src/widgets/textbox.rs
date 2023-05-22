@@ -3,11 +3,10 @@ use std::sync::{Arc, RwLock};
 use crate::{
     error::Error,
     error::Result,
-    event::{Event, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent, UserEvent},
+    event::{Event, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent},
     layout::Rect,
-    prelude::{Layout, NodeId},
     surface::{Change, Position, Surface},
-    widget::Widget,
+    widget::{RenderCtx, UpdateCtx, Widget},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,13 +160,12 @@ impl TextBox {
     }
 }
 
-impl<U> Widget<U> for TextBox {
-    fn render(
+impl<U, S> Widget<U, S> for TextBox {
+    fn render<'r>(
         &self,
-        _layout: &crate::layout::Layout<U>,
+        _cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-        _focused: bool,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>> {
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
         let (width, height) = surface.dimensions();
         self.buf
             .read()
@@ -192,13 +190,10 @@ impl<U> Widget<U> for TextBox {
         Some((None, self.cursor.x, self.cursor.y))
     }
 
-    fn update(
+    fn update<'u>(
         &mut self,
-        _owner: NodeId,
-        _rect: &Rect,
-        _layout: &mut Layout<U>,
+        _cx: &mut UpdateCtx<'u, U, S>,
         event: Event<U>,
-        _: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         self.validate_cursor();
         match event {
@@ -249,14 +244,7 @@ impl<U> Widget<U> for TextBox {
                             self.set_cursor_x(self.cursor.x.saturating_sub(1));
                         }
                         KeyCode::RightArrow => {
-                            self.set_cursor_x(
-                                self.cursor.x.saturating_add(1), // .min(
-                                                                 //     self.buf
-                                                                 //         .read()
-                                                                 //         .map(|v| v.get(self.cursor.x).map(|l| l.len()).unwrap_or(0))
-                                                                 //         .unwrap_or(0),
-                                                                 // ),
-                            );
+                            self.set_cursor_x(self.cursor.x.saturating_add(1));
                         }
                         KeyCode::Backspace => {
                             self.delete()?;

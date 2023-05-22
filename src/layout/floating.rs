@@ -6,17 +6,17 @@ use crate::Widget;
 
 use super::{Direction, LayoutNode, NodeId, Rect};
 
-pub struct Floating<U> {
+pub struct Floating<U, S> {
     /// The widget to be rendered
-    widget: Arc<RwLock<dyn Widget<U>>>,
+    widget: Arc<RwLock<dyn Widget<U, S>>>,
     /// Position and size of the floating window
     pos: Rect,
     /// Z-index of the window (only applies when not focused)
     z_index: usize,
 }
 
-impl<U> Floating<U> {
-    pub fn new(widget: impl Widget<U> + 'static, pos: Rect) -> Self {
+impl<U, S> Floating<U, S> {
+    pub fn new(widget: impl Widget<U, S> + 'static, pos: Rect) -> Self {
         Self {
             widget: Arc::new(RwLock::new(widget)),
             pos,
@@ -24,7 +24,7 @@ impl<U> Floating<U> {
         }
     }
 
-    pub fn from_widget(widget: Arc<RwLock<dyn Widget<U>>>, pos: Rect) -> Self {
+    pub fn from_widget(widget: Arc<RwLock<dyn Widget<U, S>>>, pos: Rect) -> Self {
         Self {
             widget,
             pos,
@@ -40,7 +40,7 @@ impl<U> Floating<U> {
         self.z_index
     }
 
-    pub fn widget(&self) -> Arc<RwLock<dyn Widget<U>>> {
+    pub fn widget(&self) -> Arc<RwLock<dyn Widget<U, S>>> {
         self.widget.clone()
     }
 
@@ -59,13 +59,13 @@ impl<U> Floating<U> {
     }
 }
 
-pub struct FloatStack<U> {
+pub struct FloatStack<U, S> {
     inner: Vec<NodeId>,
-    marker: std::marker::PhantomData<U>,
+    marker: std::marker::PhantomData<(U, S)>,
 }
 
 #[allow(unused)]
-impl<U> FloatStack<U> {
+impl<U, S> FloatStack<U, S> {
     pub fn new() -> Self {
         Self {
             inner: Vec::new(),
@@ -85,7 +85,7 @@ impl<U> FloatStack<U> {
         self.inner.retain(|v| *v != node);
     }
 
-    pub fn sort(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U>>) {
+    pub fn sort(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U, S>>) {
         self.inner.sort_by(|a, b| {
             nodes
                 .get(*b)
@@ -100,12 +100,12 @@ impl<U> FloatStack<U> {
         })
     }
 
-    pub fn push(&mut self, node: NodeId, nodes: &SlotMap<NodeId, LayoutNode<U>>) {
+    pub fn push(&mut self, node: NodeId, nodes: &SlotMap<NodeId, LayoutNode<U, S>>) {
         self.inner.push(node);
         self.sort(nodes);
     }
 
-    pub fn pop(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U>>) -> Option<NodeId> {
+    pub fn pop(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U, S>>) -> Option<NodeId> {
         self.inner.pop()
     }
 

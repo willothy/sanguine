@@ -6,6 +6,58 @@ use crate::{
     surface::Surface,
 };
 
+pub struct RenderCtx<'render, U, S> {
+    pub focused: bool,
+    pub layout: &'render Layout<U, S>,
+    pub state: &'render S,
+}
+
+pub struct UpdateCtx<'update, U, S> {
+    pub owner: NodeId,
+    pub bounds: Rect,
+    pub layout: &'update mut Layout<U, S>,
+    pub tx: Arc<Sender<UserEvent<U>>>,
+    pub state: &'update mut S,
+}
+
+impl<'render, U, S> RenderCtx<'render, U, S> {
+    pub fn new(focused: bool, layout: &'render Layout<U, S>, state: &'render S) -> Self {
+        Self {
+            focused,
+            layout,
+            state,
+        }
+    }
+}
+
+impl<'update, U, S> UpdateCtx<'update, U, S> {
+    pub fn new(
+        owner: NodeId,
+        bounds: Rect,
+        layout: &'update mut Layout<U, S>,
+        tx: Arc<Sender<UserEvent<U>>>,
+        state: &'update mut S,
+    ) -> Self {
+        Self {
+            owner,
+            bounds,
+            layout,
+            tx,
+            state,
+        }
+    }
+
+    pub fn with_rect<'u>(&'u mut self, rect: Rect) -> UpdateCtx<'u, U, S> {
+        UpdateCtx {
+            owner: self.owner,
+            bounds: rect,
+            layout: self.layout,
+            tx: self.tx.clone(),
+            state: self.state,
+        }
+    }
+}
+
 /// The core widget trait that all widgets must implement.
 /// This trait provides the methods that the layout engine uses to interact with widgets.
 ///
@@ -14,27 +66,19 @@ use crate::{
 ///
 /// Widgets can be shared behind an `Arc<RwLock<dyn Widget>>` to show the same widget in multiple
 /// windows.
-pub trait Widget<U> {
+pub trait Widget<U, S> {
     /// This method is called every render loop, and is responsible for rendering the widget onto
     /// the provided surface.
     fn render(
         &self,
-        layout: &Layout<U>,
+        cx: &RenderCtx<U, S>,
         surface: &mut Surface,
-        focused: bool,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>>;
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>>;
 
     #[allow(unused_variables)]
     /// This method is called when an input event is received that targets this widget.
     /// It allows the widget to update its internal state in response to an event.
-    fn update(
-        &mut self,
-        owner: NodeId,
-        bounds: &Rect,
-        layout: &mut Layout<U>,
-        event: Event<U>,
-        event_tx: Arc<Sender<UserEvent<U>>>,
-    ) -> crate::error::Result<()> {
+    fn update(&mut self, cx: &mut UpdateCtx<U, S>, event: Event<U>) -> crate::error::Result<()> {
         Ok(())
     }
 

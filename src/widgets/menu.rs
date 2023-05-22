@@ -4,7 +4,8 @@ use std::sync::{mpsc::Sender, Arc};
 use termwiz::surface::Surface;
 
 use crate::prelude::*;
-use crate::{event::UserEvent, layout::Layout, Widget};
+use crate::widget::{RenderCtx, UpdateCtx};
+use crate::{event::UserEvent, Widget};
 use termwiz::{
     cell::AttributeChange,
     color::{AnsiColor, ColorAttribute},
@@ -91,13 +92,12 @@ impl<U> Menu<U> {
     }
 }
 
-impl<U> Widget<U> for Menu<U> {
-    fn render(
+impl<U, S> Widget<U, S> for Menu<U> {
+    fn render<'r>(
         &self,
-        _layout: &Layout<U>,
+        _cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-        _focused: bool,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>> {
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
         let dims = surface.dimensions();
         surface.add_changes(vec![Change::CursorPosition {
             x: Position::Absolute(0),
@@ -141,19 +141,16 @@ impl<U> Widget<U> for Menu<U> {
         None
     }
 
-    fn update(
+    fn update<'u>(
         &mut self,
-        _owner: NodeId,
-        _bounds: &Rect,
-        _layout: &mut Layout<U>,
+        cx: &mut UpdateCtx<'u, U, S>,
         event: Event<U>,
-        event_tx: std::sync::Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         match event {
             Event::Key(KeyEvent { key, .. }) => match key {
                 KeyCode::UpArrow => self.prev(),
                 KeyCode::DownArrow => self.next(),
-                KeyCode::Enter => self.select(event_tx),
+                KeyCode::Enter => self.select(cx.tx.clone()),
                 _ => {}
             },
             Event::Mouse(MouseEvent {
@@ -162,7 +159,7 @@ impl<U> Widget<U> for Menu<U> {
                 if mouse_buttons == MouseButtons::LEFT {
                     if (y as usize) <= self.items.len() + 1 && y >= 2 {
                         self.active = y as usize - 2;
-                        self.select(event_tx);
+                        self.select(cx.tx.clone());
                     }
                 } else if mouse_buttons == MouseButtons::NONE {
                     if (y as usize) <= self.items.len() + 1 && y >= 2 {

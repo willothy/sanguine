@@ -89,6 +89,7 @@ pub fn main() -> Result<()> {
         layout,
         // The default config is fine for this example
         Config::default(),
+        (),
         |state: &mut App, event: &Event<_>, _| {
             match event {
                 Event::Key(KeyEvent {

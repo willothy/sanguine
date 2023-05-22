@@ -146,7 +146,7 @@
 //!
 //! ```
 
-pub use widget::Widget;
+pub use widget::*;
 
 /// Re-exports from termwiz relating to `termwiz::surface::Surface`
 pub mod surface {

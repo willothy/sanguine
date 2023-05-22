@@ -10,6 +10,7 @@ use crate::{
     event::*,
     layout::*,
     surface::{term::*, *},
+    widget::{RenderCtx, UpdateCtx},
     Widget,
 };
 
@@ -51,19 +52,19 @@ impl Default for Config {
     }
 }
 
-pub type GlobalHandler<U> =
-    dyn Fn(&mut App<U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool>;
+pub type GlobalHandler<S, U> =
+    dyn Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool>;
 
 /// The main application struct, responsible for managing the layout tree,
 /// keeping track of focus, and rendering the widgets.
 ///
 /// The generic type U is the type of user events that can be sent to widgets. It can be used to
 /// define custom message-passing behavior between widgets.
-pub struct App<U = ()> {
+pub struct App<S = (), U = ()> {
     /// The layout tree
-    layout: Layout<U>,
+    layout: Layout<U, S>,
     /// The post-render widget rects for mouse events
-    rendered: SecondaryMap<NodeId, Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>>,
+    rendered: SecondaryMap<NodeId, Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>>,
     /// The actual terminal used for rendering
     term: BufferedTerminal<UnixTerminal>,
     /// The size of the terminal
@@ -79,12 +80,14 @@ pub struct App<U = ()> {
     /// Global event handler, which intercepts events before they are propagated to the focused
     /// widget. If the handler returns `Ok(true)`, the event is considered handled and is not
     /// propagated to the widget that would otherwise receive it.
-    global_event_handler: Box<GlobalHandler<U>>,
+    global_event_handler: Box<GlobalHandler<S, U>>,
     /// Configuration struct
     config: Config,
+    /// User state
+    state: S,
 }
 
-impl<U> Drop for App<U> {
+impl<S, U> Drop for App<S, U> {
     fn drop(&mut self) {
         // Restore cursor visibility and leave alternate screen when app exits
         self.term
@@ -93,8 +96,8 @@ impl<U> Drop for App<U> {
     }
 }
 
-impl<U: 'static> App<U> {
-    fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget<U>>>, &Rect)> {
+impl<S: 'static, U: 'static> App<S, U> {
+    fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget<U, S>>>, &Rect)> {
         Ok((
             // Retrieve widget trait object from node
             self.layout
@@ -123,7 +126,7 @@ impl<U: 'static> App<U> {
         // Safety: The function pointer is stored in self so the borrow checker doesn't like
         // us calling it with a mutable reference to self. However, the function pointer won't be changed
         // so it should be safe to call with a mutable reference to self.
-        let evt = &self.global_event_handler as *const GlobalHandler<U>;
+        let evt = &self.global_event_handler as *const GlobalHandler<S, U>;
         unsafe { (*evt)(self, event, self.event_tx.clone()) }
     }
 
@@ -197,11 +200,14 @@ impl<U: 'static> App<U> {
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
                             .update(
-                                focus,
-                                &layout,
-                                &mut self.layout,
+                                &mut UpdateCtx::new(
+                                    focus,
+                                    layout,
+                                    &mut self.layout,
+                                    self.event_tx.clone(),
+                                    &mut self.state,
+                                ),
                                 offset_event,
-                                self.event_tx.clone(),
                             )?;
                     } else if *mouse_buttons == MouseButtons::LEFT
                         || self.config.focus_follows_hover
@@ -245,7 +251,16 @@ impl<U: 'static> App<U> {
                     widget
                         .write()
                         .map_err(|_| Error::WidgetWriteLockError(focus))?
-                        .update(focus, &layout, &mut self.layout, event, tx)?;
+                        .update(
+                            &mut UpdateCtx::new(
+                                focus,
+                                layout,
+                                &mut self.layout,
+                                tx,
+                                &mut self.state,
+                            ),
+                            event,
+                        )?;
                 };
             }
         }
@@ -283,7 +298,7 @@ impl<U: 'static> App<U> {
     /// Calls a closure, passing in a mutable reference to the layout.
     pub fn update_layout<F, R>(&mut self, f: F) -> R
     where
-        F: FnOnce(&mut Layout<U>) -> R,
+        F: FnOnce(&mut Layout<U, S>) -> R,
         R: Sized,
     {
         f(&mut self.layout)
@@ -292,7 +307,7 @@ impl<U: 'static> App<U> {
     /// Calls a closure, passing in an immutable reference to the layout.
     pub fn inspect_layout<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&Layout<U>) -> R,
+        F: FnOnce(&Layout<U, S>) -> R,
         R: Sized,
     {
         f(&self.layout)
@@ -336,6 +351,7 @@ impl<U: 'static> App<U> {
         Ok(())
     }
 
+    /// Focus the window in the given direction from the currently focused one
     pub fn focus_direction(&mut self, direction: Direction) -> Result<()> {
         let current = self.get_focus().ok_or(Error::NoFocus)?;
         let available = self.inspect_layout(|l| l.adjacent_on_side(current, direction));
@@ -346,10 +362,10 @@ impl<U: 'static> App<U> {
         Ok(())
     }
 
-    pub fn render_recursive(
+    fn render_recursive(
         &mut self,
         owner: NodeId,
-        inner_widget: Option<Arc<RwLock<dyn Widget<U>>>>,
+        inner_widget: Option<Arc<RwLock<dyn Widget<U, S>>>>,
         inner_layout: Option<Rect>,
         mut screen: &mut Surface,
     ) {
@@ -380,7 +396,10 @@ impl<U: 'static> App<U> {
         // Render widget onto widget screen
         let focused = self.focus.map(|f| f == owner).unwrap_or(false);
         let inner_widgets = match widget.read() {
-            Ok(widget) => widget.render(&self.layout, &mut widget_screen, focused),
+            Ok(widget) => widget.render(
+                &RenderCtx::new(focused, &self.layout, &self.state),
+                &mut widget_screen,
+            ),
             Err(_) => return,
         };
 
@@ -482,7 +501,7 @@ impl<U: 'static> App<U> {
     }
 
     /// Create a new Sanguine application with the provided layout and no global event handler.
-    pub fn new(layout: Layout<U>, config: Config) -> Result<Self> {
+    pub fn new(layout: Layout<U, S>, config: Config, state: S) -> Result<Self> {
         let term = Capabilities::new_from_env()
             .and_then(|caps| {
                 UnixTerminal::new(caps).and_then(|mut t| {
@@ -492,19 +511,20 @@ impl<U: 'static> App<U> {
                 })
             })
             .map_err(|_| Error::TerminalError)?;
-        let (exit_tx, exit_rx) = std::sync::mpsc::channel();
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
 
         Ok(App {
             global_event_handler: Box::new(|_, _, _| Ok(false)),
             size: Rect::from_size(term.dimensions()),
-            event_tx: Arc::new(exit_tx),
+            event_tx: Arc::new(event_tx),
             exit: AtomicBool::new(false),
             rendered: SecondaryMap::new(),
             focus: None,
             layout,
             term,
-            event_rx: exit_rx,
+            event_rx,
             config,
+            state,
         })
     }
 
@@ -512,11 +532,12 @@ impl<U: 'static> App<U> {
     /// intercepts events before they are sent to widgets. It can return true to prevent the event
     /// from propagating to widgets, or false to allow propagation.
     pub fn with_global_handler(
-        layout: Layout<U>,
+        layout: Layout<U, S>,
         config: Config,
-        handler: impl Fn(&mut App<U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
+        state: S,
+        handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
     ) -> Result<Self> {
-        let mut new = Self::new(layout, config)?;
+        let mut new = Self::new(layout, config, state)?;
         new.global_event_handler = Box::new(handler);
         Ok(new)
     }

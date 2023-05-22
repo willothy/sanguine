@@ -1,24 +1,24 @@
 //! Displays a border around a widget, with a title and a `*` when the widget is focused.
 
-use std::sync::{mpsc::Sender, Arc, RwLock};
+use std::sync::{Arc, RwLock};
 
 use crate::{
     error::Error,
-    event::{Event, UserEvent},
+    event::Event,
     layout::Rect,
-    prelude::{Layout, NodeId},
     surface::*,
+    widget::{RenderCtx, UpdateCtx},
     Widget,
 };
 
 /// Displays a border around a widget, with a title and a `*` when the widget is focused.
-pub struct Border<U> {
+pub struct Border<U, S> {
     title: String,
-    inner: Arc<RwLock<dyn Widget<U>>>,
+    inner: Arc<RwLock<dyn Widget<U, S>>>,
 }
 
-impl<U> Border<U> {
-    pub fn new(title: impl Into<String>, inner: impl Widget<U> + 'static) -> Self {
+impl<U, S> Border<U, S> {
+    pub fn new(title: impl Into<String>, inner: impl Widget<U, S> + 'static) -> Self {
         Self {
             title: title.into(),
             inner: Arc::new(RwLock::new(inner)),
@@ -27,7 +27,7 @@ impl<U> Border<U> {
 
     pub fn from_inner(
         title: impl Into<String>,
-        inner: Arc<RwLock<impl Widget<U> + 'static>>,
+        inner: Arc<RwLock<impl Widget<U, S> + 'static>>,
     ) -> Self {
         Self {
             title: title.into(),
@@ -43,17 +43,16 @@ const TOP_RIGHT: char = '┐';
 const BOTTOM_LEFT: char = '└';
 const BOTTOM_RIGHT: char = '┘';
 
-impl<U> Widget<U> for Border<U> {
-    fn render(
+impl<U, S> Widget<U, S> for Border<U, S> {
+    fn render<'r>(
         &self,
-        _layout: &crate::layout::Layout<U>,
+        cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-        focused: bool,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U>>>)>> {
+    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
         let (width, height) = surface.dimensions();
         let mut changes = vec![];
         changes.push(Change::Text(TOP_LEFT.to_string()));
-        let title = if focused {
+        let title = if cx.focused {
             self.title.clone() + "*"
         } else {
             self.title.clone()
@@ -113,25 +112,22 @@ impl<U> Widget<U> for Border<U> {
             .map(|(_, x, y)| (Some(0), x, y))
     }
 
-    fn update(
+    fn update<'u>(
         &mut self,
-        owner: NodeId,
-        bounds: &Rect,
-        layout: &mut Layout<U>,
+        cx: &mut UpdateCtx<'u, U, S>,
         event: Event<U>,
-        exit_tx: Arc<Sender<UserEvent<U>>>,
     ) -> crate::error::Result<()> {
         let rect = Rect {
-            x: bounds.x + 1.,
-            y: bounds.y + 1.,
-            width: bounds.width - 2.,
-            height: bounds.height - 2.,
+            x: cx.bounds.x + 1.,
+            y: cx.bounds.y + 1.,
+            width: cx.bounds.width - 2.,
+            height: cx.bounds.height - 2.,
         };
 
         self.inner
             .write()
             .map_err(|_| Error::external("could not lock widget"))?
-            .update(owner, &rect, layout, event, exit_tx)?;
+            .update(&mut cx.with_rect(rect), event)?;
         Ok(())
     }
 }
