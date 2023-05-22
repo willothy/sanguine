@@ -1,5 +1,6 @@
 #![cfg(feature = "tui")]
 
+use ratatui::style::Modifier;
 use termwiz::{
     cell::{CellAttributes, Intensity, Underline},
     color::{AnsiColor, ColorAttribute, RgbColor},
@@ -21,7 +22,67 @@ impl Bridge for &mut Surface {
     }
 }
 
-struct TuiColor(ratatui::style::Color);
+pub(crate) struct TuiColor(ratatui::style::Color);
+pub(crate) struct TuiStyle(ratatui::style::Style);
+
+impl Into<CellAttributes> for TuiStyle {
+    fn into(self) -> CellAttributes {
+        let fg = self
+            .0
+            .fg
+            .map(|v| TuiColor(v).into())
+            .unwrap_or(ColorAttribute::Default);
+        let bg = self
+            .0
+            .bg
+            .map(|v| TuiColor(v).into())
+            .unwrap_or(ColorAttribute::Default);
+
+        let modifier = self.0.add_modifier;
+        let slow_blink = modifier.contains(Modifier::SLOW_BLINK);
+        let rapid_blink = modifier.contains(Modifier::RAPID_BLINK);
+
+        // add style
+        let mut attr = CellAttributes::default();
+        attr.set_foreground(fg);
+        attr.set_background(bg);
+        attr.set_intensity(if modifier.contains(Modifier::BOLD) {
+            Intensity::Bold
+        } else if modifier.contains(Modifier::DIM) {
+            Intensity::Half
+        } else {
+            Intensity::Normal
+        });
+        attr.set_italic(modifier.contains(Modifier::ITALIC));
+        // todo: dim
+        attr.set_underline(if modifier.contains(Modifier::UNDERLINED) {
+            Underline::Single
+        } else {
+            Underline::None
+        });
+        attr.set_reverse(modifier.contains(Modifier::REVERSED));
+        attr.set_invisible(modifier.contains(Modifier::HIDDEN));
+        attr.set_strikethrough(modifier.contains(Modifier::CROSSED_OUT));
+        attr.set_blink(match (slow_blink, rapid_blink) {
+            (_, true) => termwiz::cell::Blink::Rapid,
+            (true, false) => termwiz::cell::Blink::Slow,
+            (false, false) => termwiz::cell::Blink::None,
+        });
+        attr
+    }
+}
+
+impl TuiColor {
+    pub fn new(color: ratatui::style::Color) -> Self {
+        Self(color)
+    }
+}
+
+impl TuiStyle {
+    pub fn new(style: ratatui::style::Style) -> Self {
+        Self(style)
+    }
+}
 
 impl Into<ColorAttribute> for TuiColor {
     fn into(self) -> ColorAttribute {
@@ -58,51 +119,6 @@ impl<'surface> ratatui::backend::Backend for BridgeInner<'surface> {
         I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
     {
         for (x, y, cell) in content {
-            let style = cell.style();
-            let fg = style
-                .fg
-                .map(|v| TuiColor(v).into())
-                .unwrap_or(ColorAttribute::Default);
-            let bg = style
-                .bg
-                .map(|v| TuiColor(v).into())
-                .unwrap_or(ColorAttribute::Default);
-            let modifier = style.add_modifier;
-            let bold = modifier.contains(ratatui::style::Modifier::BOLD);
-            let italic = modifier.contains(ratatui::style::Modifier::ITALIC);
-            let _dim = modifier.contains(ratatui::style::Modifier::DIM);
-            let underline = modifier.contains(ratatui::style::Modifier::UNDERLINED);
-            let reverse = modifier.contains(ratatui::style::Modifier::REVERSED);
-            let hidden = modifier.contains(ratatui::style::Modifier::HIDDEN);
-            let strikethrough = modifier.contains(ratatui::style::Modifier::CROSSED_OUT);
-            let slow_blink = modifier.contains(ratatui::style::Modifier::SLOW_BLINK);
-            let rapid_blink = modifier.contains(ratatui::style::Modifier::RAPID_BLINK);
-
-            // add style
-            let mut attr = CellAttributes::default();
-            attr.set_foreground(fg);
-            attr.set_background(bg);
-            attr.set_intensity(if bold {
-                Intensity::Bold
-            } else {
-                Intensity::Normal
-            });
-            attr.set_italic(italic);
-            // todo: dim
-            attr.set_underline(if underline {
-                Underline::Single
-            } else {
-                Underline::None
-            });
-            attr.set_reverse(reverse);
-            attr.set_invisible(hidden);
-            attr.set_strikethrough(strikethrough);
-            attr.set_blink(match (slow_blink, rapid_blink) {
-                (_, true) => termwiz::cell::Blink::Rapid,
-                (true, false) => termwiz::cell::Blink::Slow,
-                (false, false) => termwiz::cell::Blink::None,
-            });
-
             // set position
             self.0.add_changes(vec![
                 // Set cursor position
@@ -111,7 +127,7 @@ impl<'surface> ratatui::backend::Backend for BridgeInner<'surface> {
                     y: Position::Absolute(y as usize),
                 },
                 // Set the style
-                Change::AllAttributes(attr),
+                Change::AllAttributes(TuiStyle(cell.style()).into()),
                 // Write the text
                 Change::Text(cell.symbol.clone()),
                 // Reset attributes
