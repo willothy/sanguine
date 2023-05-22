@@ -85,11 +85,10 @@ pub fn main() -> Result<()> {
     // In this case, we only handle occurrences of Shift+Tab, which we use to cycle focus.
     // If Shift+Tab is pressed, we return true to signal that the event should not be
     // propagated.
-    let mut app = App::with_global_handler(
+    let mut app = App::new_with_handler(
         layout,
         // The default config is fine for this example
         Config::default(),
-        (),
         |state: &mut App, event: &Event<_>, _| {
             match event {
                 Event::Key(KeyEvent {

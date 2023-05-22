@@ -96,7 +96,118 @@ impl<S, U> Drop for App<S, U> {
     }
 }
 
+impl<S: Default + 'static, U: 'static> App<S, U> {
+    /// Create a new Sanguine application with the provided layout and no global event handler.
+    pub fn new(layout: Layout<U, S>, config: Config) -> Result<Self> {
+        let term = Capabilities::new_from_env()
+            .and_then(|caps| {
+                UnixTerminal::new(caps).and_then(|mut t| {
+                    t.set_raw_mode()?;
+                    t.enter_alternate_screen()?;
+                    BufferedTerminal::new(t)
+                })
+            })
+            .map_err(|_| Error::TerminalError)?;
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+
+        Ok(App {
+            global_event_handler: Box::new(|_, _, _| Ok(false)),
+            size: Rect::from_size(term.dimensions()),
+            event_tx: Arc::new(event_tx),
+            exit: AtomicBool::new(false),
+            rendered: SecondaryMap::new(),
+            focus: None,
+            layout,
+            term,
+            event_rx,
+            config,
+            state: Default::default(),
+        })
+    }
+
+    /// Create a new Sanguine app with the provided global event handler. The global event handler
+    /// intercepts events before they are sent to widgets. It can return true to prevent the event
+    /// from propagating to widgets, or false to allow propagation.
+    pub fn new_with_handler(
+        layout: Layout<U, S>,
+        config: Config,
+        handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
+    ) -> Result<Self> {
+        let term = Capabilities::new_from_env()
+            .and_then(|caps| {
+                UnixTerminal::new(caps).and_then(|mut t| {
+                    t.set_raw_mode()?;
+                    t.enter_alternate_screen()?;
+                    BufferedTerminal::new(t)
+                })
+            })
+            .map_err(|_| Error::TerminalError)?;
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+
+        Ok(App {
+            global_event_handler: Box::new(handler),
+            size: Rect::from_size(term.dimensions()),
+            event_tx: Arc::new(event_tx),
+            exit: AtomicBool::new(false),
+            rendered: SecondaryMap::new(),
+            focus: None,
+            layout,
+            term,
+            event_rx,
+            config,
+            state: Default::default(),
+        })
+    }
+}
+
 impl<S: 'static, U: 'static> App<S, U> {
+    pub fn new_with_state(layout: Layout<U, S>, config: Config, state: S) -> Result<Self> {
+        let term = Capabilities::new_from_env()
+            .and_then(|caps| {
+                UnixTerminal::new(caps).and_then(|mut t| {
+                    t.set_raw_mode()?;
+                    t.enter_alternate_screen()?;
+                    BufferedTerminal::new(t)
+                })
+            })
+            .map_err(|_| Error::TerminalError)?;
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+
+        Ok(App {
+            global_event_handler: Box::new(|_, _, _| Ok(false)),
+            size: Rect::from_size(term.dimensions()),
+            event_tx: Arc::new(event_tx),
+            exit: AtomicBool::new(false),
+            rendered: SecondaryMap::new(),
+            focus: None,
+            layout,
+            term,
+            event_rx,
+            config,
+            state,
+        })
+    }
+
+    pub fn with_state(mut self, state: S) -> Self {
+        self.state = state;
+        self
+    }
+
+    pub fn with_handler(
+        mut self,
+        handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
+    ) -> Self {
+        self.global_event_handler = Box::new(handler);
+        self
+    }
+
+    pub fn handler(
+        &mut self,
+        handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
+    ) {
+        self.global_event_handler = Box::new(handler);
+    }
+
     fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget<U, S>>>, &Rect)> {
         Ok((
             // Retrieve widget trait object from node
@@ -498,47 +609,5 @@ impl<S: 'static, U: 'static> App<S, U> {
             .map_err(|_| Error::external("could not flush terminal"))?;
 
         Ok(())
-    }
-
-    /// Create a new Sanguine application with the provided layout and no global event handler.
-    pub fn new(layout: Layout<U, S>, config: Config, state: S) -> Result<Self> {
-        let term = Capabilities::new_from_env()
-            .and_then(|caps| {
-                UnixTerminal::new(caps).and_then(|mut t| {
-                    t.set_raw_mode()?;
-                    t.enter_alternate_screen()?;
-                    BufferedTerminal::new(t)
-                })
-            })
-            .map_err(|_| Error::TerminalError)?;
-        let (event_tx, event_rx) = std::sync::mpsc::channel();
-
-        Ok(App {
-            global_event_handler: Box::new(|_, _, _| Ok(false)),
-            size: Rect::from_size(term.dimensions()),
-            event_tx: Arc::new(event_tx),
-            exit: AtomicBool::new(false),
-            rendered: SecondaryMap::new(),
-            focus: None,
-            layout,
-            term,
-            event_rx,
-            config,
-            state,
-        })
-    }
-
-    /// Create a new Sanguine app with the provided global event handler. The global event handler
-    /// intercepts events before they are sent to widgets. It can return true to prevent the event
-    /// from propagating to widgets, or false to allow propagation.
-    pub fn with_global_handler(
-        layout: Layout<U, S>,
-        config: Config,
-        state: S,
-        handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
-    ) -> Result<Self> {
-        let mut new = Self::new(layout, config, state)?;
-        new.global_event_handler = Box::new(handler);
-        Ok(new)
     }
 }
