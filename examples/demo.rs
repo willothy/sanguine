@@ -1,22 +1,15 @@
+use std::sync::{mpsc::Sender, Arc, RwLock};
+
 use sanguine::{
     error::*,
     event::{Event, UserEvent},
-    layout::{Axis, Constraint, Direction, Rect},
+    layout::{Axis, Constraint, Direction, NodeId, Rect},
     widgets::{Border, Menu, TextBox},
     App, Config, Layout,
 };
 use termwiz::input::{KeyCode, KeyEvent, Modifiers};
 
-pub fn main() -> Result<()> {
-    // Create the layout struct
-    let mut layout = Layout::new();
-
-    // Create a TextBox widget, wrapped by a Border widget
-    let textbox = TextBox::new();
-    // Get a copy of the textbox buffer
-    let textbox_buffer = textbox.buffer();
-    let editor_1 = Border::new("Shared TextBox".to_owned(), textbox);
-
+fn menu(buf: Arc<RwLock<Vec<String>>>) -> Menu<()> {
     // create a menu widget, and add some items to it
     let mut menu = Menu::new("Demo menu");
     menu.add_item("Quit", "", |_, _, event_tx| {
@@ -25,9 +18,9 @@ pub fn main() -> Result<()> {
     });
     menu.add_item("Delete", "", {
         // use a shared copy of the textbox buffer, and delete the last character of the buffer
-        let textbox_buffer = textbox_buffer.clone();
+        let buf = buf.clone();
         move |_, _, _| {
-            let mut w = textbox_buffer.write().unwrap();
+            let mut w = buf.write().unwrap();
             let len = w.len();
             let last = w.last_mut().unwrap();
             if last.is_empty() && len > 1 {
@@ -39,14 +32,23 @@ pub fn main() -> Result<()> {
     });
     menu.add_item("Get line count: ", "<unknown>", move |this, menu, _| {
         // count buffer lines, and update the menu item
-        menu.update_tag(this, |_| textbox_buffer.read().unwrap().len().to_string())
+        menu.update_tag(this, |_| buf.read().unwrap().len().to_string())
     });
+    menu
+}
 
-    // Add the first editor to the layout
-    let left = layout.add_leaf(editor_1);
+fn app(layout: &mut Layout) -> Option<NodeId> {
+    // Create a TextBox widget, wrapped by a Border widget
+    let textbox = TextBox::new();
+    // Get a copy of the textbox buffer
+    let textbox_buffer = textbox.buffer();
 
     // Add the menu widget
-    let top_right = layout.add_leaf(Border::new("Menu".to_owned(), menu));
+    let menu = layout.add_leaf(Border::new("Menu".to_owned(), menu(textbox_buffer)));
+
+    // Add the first editor to the layout
+    let editor = Border::new("Shared TextBox".to_owned(), textbox);
+    let left = layout.add_leaf(editor);
 
     // Add a floating window
     layout.add_floating(
@@ -76,7 +78,7 @@ pub fn main() -> Result<()> {
         // The container will take up all available space
         Some(Constraint::fill()),
         // The container will contain the cloned first editor, and the second editor
-        [top_right, bot_right],
+        [menu, bot_right],
     );
 
     // Get the root node of the layout
@@ -88,52 +90,57 @@ pub fn main() -> Result<()> {
     layout.add_child(root, left);
     layout.add_child(root, right);
 
+    Some(left)
+}
+
+fn handle_event(state: &mut App, event: &Event<()>, _: Arc<Sender<UserEvent<()>>>) -> Result<bool> {
+    match event {
+        Event::Key(KeyEvent {
+            key: KeyCode::Tab,
+            modifiers: Modifiers::SHIFT,
+        }) => {
+            state.cycle_focus()?;
+            Ok(true)
+        }
+        Event::Key(KeyEvent {
+            key:
+                k @ (KeyCode::UpArrow | KeyCode::DownArrow | KeyCode::LeftArrow | KeyCode::RightArrow),
+            modifiers: Modifiers::SHIFT,
+        }) => {
+            let dir = match k {
+                KeyCode::UpArrow => Direction::Up,
+                KeyCode::DownArrow => Direction::Down,
+                KeyCode::LeftArrow => Direction::Left,
+                KeyCode::RightArrow => Direction::Right,
+                _ => unreachable!(),
+            };
+            state.focus_direction(dir)?;
+            Ok(true)
+        }
+        // If the event wasn't matched, return false to allow it to propagate
+        _ => Ok(false),
+    }
+}
+
+pub fn main() -> Result<()> {
     // Create the sanguine app, providing a handler for *global* input events.
     // In this case, we only handle occurrences of Shift+Tab, which we use to cycle focus.
     // If Shift+Tab is pressed, we return true to signal that the event should not be
     // propagated.
-    let mut app = App::new_with_handler(
-        layout,
+    let mut demo = App::new(
         // The default config is fine for this example
         Config::default(),
-        |state: &mut App, event: &Event<_>, _| {
-            match event {
-                Event::Key(KeyEvent {
-                    key: KeyCode::Tab,
-                    modifiers: Modifiers::SHIFT,
-                }) => {
-                    state.cycle_focus()?;
-                }
-                Event::Key(KeyEvent {
-                    key:
-                        k @ (KeyCode::UpArrow
-                        | KeyCode::DownArrow
-                        | KeyCode::LeftArrow
-                        | KeyCode::RightArrow),
-                    modifiers: Modifiers::SHIFT,
-                }) => {
-                    let dir = match k {
-                        KeyCode::UpArrow => Direction::Up,
-                        KeyCode::DownArrow => Direction::Down,
-                        KeyCode::LeftArrow => Direction::Left,
-                        KeyCode::RightArrow => Direction::Right,
-                        _ => unreachable!(),
-                    };
-                    state.focus_direction(dir)?;
-                }
-                _ => return Ok(false),
-            }
-            Ok(true)
-        },
-    )?;
-    // Set the initial focus to the left node.
-    // Only windows can be focused, attempting to focus a container will throw an error.
-    app.set_focus(left)?;
+    )?
+    // The with_layout function can be used to setup the layout and set the initially focused
+    // window at the same time
+    .with_layout(app)
+    // Setup the handler for global input events
+    .with_handler(handle_event);
 
     // The main render loop, which will run until the user closes the application (defaults to
     // Ctrl-q).
-    while app.handle_events()? {
-        app.render()?;
+    while demo.handle_events()? {
+        demo.render()?;
     }
 
     Ok(())

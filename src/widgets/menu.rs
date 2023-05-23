@@ -32,6 +32,21 @@ impl<U> Menu<U> {
         }
     }
 
+    pub fn with_item(
+        mut self,
+        title: impl Into<String>,
+        tag: impl Into<String>,
+        action: impl MenuAction<U> + 'static,
+    ) -> Self {
+        self.add_item(title, tag, action);
+        self
+    }
+
+    pub fn with_items(mut self, items: Vec<(String, String, Box<dyn MenuAction<U>>)>) -> Self {
+        self.items.extend(items);
+        self
+    }
+
     pub fn add_item(
         &mut self,
         title: impl Into<String>,

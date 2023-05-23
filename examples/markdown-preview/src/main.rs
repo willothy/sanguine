@@ -6,7 +6,7 @@ use sanguine::{
     style::CellAttributes,
     surface::{Change, Surface},
     widgets::{Border, TextBox},
-    App, Config, Layout, RenderCtx, Widget,
+    App, Config, RenderCtx, Widget,
 };
 use termimad::MadSkin;
 
@@ -39,20 +39,18 @@ impl<U, S> Widget<U, S> for MarkdownPreview {
 }
 
 fn main() -> Result<()> {
-    let mut layout = Layout::default();
+    let mut s = App::<()>::new(Config::default())?.with_layout(|layout| {
+        let root = layout.root();
+        layout.set_direction(root, Axis::Horizontal);
 
-    let root = layout.root();
-    layout.set_direction(root, Axis::Horizontal);
-
-    let textbox = TextBox::new();
-    let buf = textbox.buffer();
-    let editor = layout.add_leaf(Border::new("Editor".to_owned(), textbox));
-    layout.add_child(root, editor);
-    let preview = layout.add_leaf(Border::new("Preview".to_owned(), MarkdownPreview::new(buf)));
-    layout.add_child(root, preview);
-
-    let mut s = App::<()>::new(layout, Config::default())?;
-    s.set_focus(editor)?;
+        let textbox = TextBox::new();
+        let buf = textbox.buffer();
+        let editor = layout.add_leaf(Border::new("Editor".to_owned(), textbox));
+        layout.add_child(root, editor);
+        let preview = layout.add_leaf(Border::new("Preview".to_owned(), MarkdownPreview::new(buf)));
+        layout.add_child(root, preview);
+        Some(editor)
+    });
 
     while s.handle_events()? {
         s.render()?;

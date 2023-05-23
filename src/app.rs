@@ -97,9 +97,37 @@ impl<S, U> Drop for App<S, U> {
     }
 }
 
+impl<S: Default + 'static, U: 'static> Default for App<S, U> {
+    fn default() -> Self {
+        let term = Capabilities::new_from_env()
+            .and_then(|caps| {
+                UnixTerminal::new(caps).and_then(|mut t| {
+                    t.set_raw_mode()?;
+                    t.enter_alternate_screen().ok();
+                    BufferedTerminal::new(t)
+                })
+            })
+            .unwrap();
+        let (event_tx, event_rx) = std::sync::mpsc::channel();
+        Self {
+            global_event_handler: Box::new(|_, _, _| Ok(false)),
+            size: Rect::from_size(term.dimensions()),
+            event_tx: Arc::new(event_tx),
+            exit: Arc::new(AtomicBool::new(false)),
+            rendered: SecondaryMap::new(),
+            layout: Layout::new(),
+            focus: None,
+            term,
+            event_rx,
+            config: Default::default(),
+            state: Default::default(),
+        }
+    }
+}
+
 impl<S: Default + 'static, U: 'static> App<S, U> {
     /// Create a new Sanguine application with the provided layout and no global event handler.
-    pub fn new(layout: Layout<U, S>, config: Config) -> Result<Self> {
+    pub fn new(config: Config) -> Result<Self> {
         let term = Capabilities::new_from_env()
             .and_then(|caps| {
                 UnixTerminal::new(caps).and_then(|mut t| {
@@ -117,8 +145,8 @@ impl<S: Default + 'static, U: 'static> App<S, U> {
             event_tx: Arc::new(event_tx),
             exit: Arc::new(AtomicBool::new(false)),
             rendered: SecondaryMap::new(),
+            layout: Layout::new(),
             focus: None,
-            layout,
             term,
             event_rx,
             config,
@@ -130,7 +158,6 @@ impl<S: Default + 'static, U: 'static> App<S, U> {
     /// intercepts events before they are sent to widgets. It can return true to prevent the event
     /// from propagating to widgets, or false to allow propagation.
     pub fn new_with_handler(
-        layout: Layout<U, S>,
         config: Config,
         handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
     ) -> Result<Self> {
@@ -151,8 +178,8 @@ impl<S: Default + 'static, U: 'static> App<S, U> {
             event_tx: Arc::new(event_tx),
             exit: Arc::new(AtomicBool::new(false)),
             rendered: SecondaryMap::new(),
+            layout: Layout::new(),
             focus: None,
-            layout,
             term,
             event_rx,
             config,
@@ -162,7 +189,7 @@ impl<S: Default + 'static, U: 'static> App<S, U> {
 }
 
 impl<S: 'static, U: 'static> App<S, U> {
-    pub fn new_with_state(layout: Layout<U, S>, config: Config, state: S) -> Result<Self> {
+    pub fn new_with_state(config: Config, state: S) -> Result<Self> {
         let term = Capabilities::new_from_env()
             .and_then(|caps| {
                 UnixTerminal::new(caps).and_then(|mut t| {
@@ -180,8 +207,8 @@ impl<S: 'static, U: 'static> App<S, U> {
             event_tx: Arc::new(event_tx),
             exit: Arc::new(AtomicBool::new(false)),
             rendered: SecondaryMap::new(),
+            layout: Layout::new(),
             focus: None,
-            layout,
             term,
             event_rx,
             config,
@@ -199,6 +226,14 @@ impl<S: 'static, U: 'static> App<S, U> {
         handler: impl Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool> + 'static,
     ) -> Self {
         self.global_event_handler = Box::new(handler);
+        self
+    }
+
+    pub fn with_layout(mut self, f: impl Fn(&mut Layout<U, S>) -> Option<NodeId>) -> Self {
+        let res = f(&mut self.layout);
+        if let Some(res) = res {
+            self.set_focus(res).ok();
+        }
         self
     }
 
@@ -257,8 +292,8 @@ impl<S: 'static, U: 'static> App<S, U> {
                 mouse_buttons,
                 modifiers,
             }) => {
-                y -= 1;
-                x -= 1;
+                // y -= 1;
+                // x -= 1;
                 if !self.global_event(&event)? {
                     let Some(node) = self.layout.node_at_pos((x, y)) else {
                         return Ok(());
@@ -291,8 +326,8 @@ impl<S: 'static, U: 'static> App<S, U> {
 
                         if let Some((child_layout, child_widget)) = child {
                             layout = Rect {
-                                x: /* layout.x +  */child_layout.x,
-                                y: /* layout.y +  */child_layout.y,
+                                x: child_layout.x + 1.,
+                                y: child_layout.y + 1.,
                                 width: child_layout.width,
                                 height: child_layout.height,
                             };

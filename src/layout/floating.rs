@@ -4,27 +4,32 @@ use slotmap::SlotMap;
 
 use crate::Widget;
 
-use super::{Direction, LayoutNode, NodeId, Rect};
+use super::{Direction, LayoutNode, NodeId, Rect, WidgetId};
 
-pub struct Floating<U, S> {
+pub struct Floating {
     /// The widget to be rendered
-    widget: Arc<RwLock<dyn Widget<U, S>>>,
+    widget: WidgetId,
     /// Position and size of the floating window
     pos: Rect,
     /// Z-index of the window (only applies when not focused)
     z_index: usize,
 }
 
-impl<U, S> Floating<U, S> {
-    pub fn new(widget: impl Widget<U, S> + 'static, pos: Rect) -> Self {
+impl Floating {
+    pub fn new<U, S>(widget: WidgetId, pos: Rect) -> Self {
         Self {
-            widget: Arc::new(RwLock::new(widget)),
+            widget,
             pos,
             z_index: 1,
         }
     }
 
-    pub fn from_widget(widget: Arc<RwLock<dyn Widget<U, S>>>, pos: Rect) -> Self {
+    pub fn from_widget<U, S>(
+        widget: Arc<RwLock<dyn Widget<U, S>>>,
+        pos: Rect,
+        widgets: &mut SlotMap<WidgetId, Arc<RwLock<dyn Widget<U, S>>>>,
+    ) -> Self {
+        let widget = widgets.insert(widget);
         Self {
             widget,
             pos,
@@ -40,8 +45,8 @@ impl<U, S> Floating<U, S> {
         self.z_index
     }
 
-    pub fn widget(&self) -> Arc<RwLock<dyn Widget<U, S>>> {
-        self.widget.clone()
+    pub fn widget<U, S>(&self) -> WidgetId {
+        self.widget
     }
 
     pub fn move_to(&mut self, pos: (usize, usize)) {
@@ -85,7 +90,7 @@ impl<U, S> FloatStack<U, S> {
         self.inner.retain(|v| *v != node);
     }
 
-    pub fn sort(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U, S>>) {
+    pub fn sort(&mut self, nodes: &SlotMap<NodeId, LayoutNode>) {
         self.inner.sort_by(|a, b| {
             nodes
                 .get(*b)
@@ -100,12 +105,12 @@ impl<U, S> FloatStack<U, S> {
         })
     }
 
-    pub fn push(&mut self, node: NodeId, nodes: &SlotMap<NodeId, LayoutNode<U, S>>) {
+    pub fn push(&mut self, node: NodeId, nodes: &SlotMap<NodeId, LayoutNode>) {
         self.inner.push(node);
         self.sort(nodes);
     }
 
-    pub fn pop(&mut self, nodes: &SlotMap<NodeId, LayoutNode<U, S>>) -> Option<NodeId> {
+    pub fn pop(&mut self, nodes: &SlotMap<NodeId, LayoutNode>) -> Option<NodeId> {
         self.inner.pop()
     }
 

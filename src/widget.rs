@@ -6,12 +6,14 @@ use crate::{
     surface::Surface,
 };
 
+/// The data passed to [`Widget::render`]
 pub struct RenderCtx<'render, U, S> {
     pub focused: bool,
     pub layout: &'render Layout<U, S>,
     pub state: &'render S,
 }
 
+/// The data passed to [`Widget::update`]
 pub struct UpdateCtx<'update, U, S> {
     pub owner: NodeId,
     pub bounds: Rect,
@@ -61,10 +63,10 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
 /// The core widget trait that all widgets must implement.
 /// This trait provides the methods that the layout engine uses to interact with widgets.
 ///
-/// Implementors of `Widget` can be displayed inside of a window (a layout `Leaf`), or
+/// Implementors of [`Widget`] can be displayed inside of a window, or
 /// nested in other widgets.
 ///
-/// Widgets can be shared behind an `Arc<RwLock<dyn Widget>>` to show the same widget in multiple
+/// Widgets can be shared behind an [`Arc<RwLock<dyn Widget>>`] to show the same widget in multiple
 /// windows.
 pub trait Widget<U, S> {
     /// This method is called every render loop, and is responsible for rendering the widget onto
