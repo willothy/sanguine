@@ -5,7 +5,7 @@ use termwiz::input::{KeyCode, KeyEvent, MouseButtons, MouseEvent};
 use termwiz::surface::{Change, Position, Surface};
 
 use crate::event::Event;
-use crate::layout::Rect;
+use crate::layout::{Rect, WidgetId};
 use crate::widget::{RenderCtx, UpdateCtx};
 use crate::{event::UserEvent, Widget};
 use termwiz::{
@@ -114,7 +114,7 @@ impl<U, S> Widget<U, S> for Menu<U> {
         &self,
         _cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
+    ) -> Option<Vec<(Rect, WidgetId)>> {
         let dims = surface.dimensions();
         surface.add_changes(vec![Change::CursorPosition {
             x: Position::Absolute(0),

@@ -65,13 +65,14 @@ pub struct App<S = (), U = ()> {
     /// The layout tree
     layout: Layout<U, S>,
     /// The post-render widget rects for mouse events
-    rendered: SecondaryMap<NodeId, Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>>,
+    // rendered: SecondaryMap<NodeId, Vec<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>>>,
+    rendered: SecondaryMap<WidgetId, (Rect, Option<Vec<WidgetId>>)>,
     /// The actual terminal used for rendering
     term: BufferedTerminal<UnixTerminal>,
     /// The size of the terminal
     size: Rect,
     /// The focused node in the tree, if any
-    focus: Option<NodeId>,
+    focus: Option<WidgetId>,
     /// Sender for user events, given to widgets when `Widget::update` is called
     event_tx: Arc<std::sync::mpsc::Sender<UserEvent<U>>>,
     /// Receiver for user events, only used internally
@@ -229,7 +230,7 @@ impl<S: 'static, U: 'static> App<S, U> {
         self
     }
 
-    pub fn with_layout(mut self, f: impl Fn(&mut Layout<U, S>) -> Option<NodeId>) -> Self {
+    pub fn with_layout(mut self, f: impl Fn(&mut Layout<U, S>) -> Option<WidgetId>) -> Self {
         let res = f(&mut self.layout);
         if let Some(res) = res {
             self.set_focus(res).ok();
@@ -244,16 +245,16 @@ impl<S: 'static, U: 'static> App<S, U> {
         self.global_event_handler = Box::new(handler);
     }
 
-    fn render_ctx(&self, node: NodeId) -> Result<(Arc<RwLock<dyn Widget<U, S>>>, &Rect)> {
+    fn get_widget(&self, id: WidgetId) -> Result<Arc<RwLock<dyn Widget<U, S>>>> {
+        id.get(&self.layout).ok_or(Error::WidgetNotFound(id))
+    }
+
+    fn render_ctx(&self, node: NodeId) -> Result<(WidgetId, &Rect)> {
         Ok((
             // Retrieve widget trait object from node
-            self.layout
-                .widget(node)
-                .ok_or(Error::WidgetNotFound(node))?,
+            node.widget(&self.layout).ok_or(Error::NodeNotFound(node))?,
             // Retrieve computed layout for window
-            self.layout
-                .layout(node)
-                .ok_or(Error::WidgetNotFound(node))?,
+            self.layout.layout(node).ok_or(Error::NodeNotFound(node))?,
         ))
     }
 
@@ -292,6 +293,7 @@ impl<S: 'static, U: 'static> App<S, U> {
                 mouse_buttons,
                 modifiers,
             }) => {
+                return Ok(());
                 // y -= 1;
                 // x -= 1;
                 if !self.global_event(&event)? {
@@ -299,41 +301,44 @@ impl<S: 'static, U: 'static> App<S, U> {
                         return Ok(());
                     };
                     if let Some(focus) = self.focus {
-                        let focus = if focus != node {
-                            // Send hover events to the hovered node, but focus the window if the mouse is clicked
-                            if *mouse_buttons != MouseButtons::NONE {
-                                // If the node under the mouse is different from the focused node,
-                                // focus the new node and consume the event
-                                self.focus = Some(node);
-                                return Ok(());
-                            }
-                            node
-                        } else {
-                            focus
-                        };
+                        // let focus = if focus != node {
+                        //     // Send hover events to the hovered node, but focus the window if the mouse is clicked
+                        //     if *mouse_buttons != MouseButtons::NONE {
+                        //         // If the node under the mouse is different from the focused node,
+                        //         // focus the new node and consume the event
+                        //         self.focus = Some(node);
+                        //         return Ok(());
+                        //     }
+                        //     node
+                        // } else {
+                        //     focus
+                        // };
+
+                        // // If the node under the mouse is the same as the focused node,
+                        // // send the event to the focused node
+                        // let (mut widget, mut layout) =
+                        //     self.render_ctx(focus).map(|(w, l)| (w, l.clone())).unwrap();
+                        let mut widget = focus;
+                        let mut layout = self.rendered.get(focus).cloned().unwrap().0;
 
                         // check if there are inner widgets that the event should be sent to
-                        let children = self.rendered.get(focus).cloned().unwrap_or(vec![]);
-                        let child = children
-                            .iter()
-                            .filter(|(rect, _)| rect.contains(x as f32, y as f32))
-                            .next();
+                        while let Some((_, Some(nested))) = self.rendered.get(widget) {
+                            let child = nested.iter().find_map(|child| {
+                                let rect = &self.rendered.get(*child).unwrap().0;
+                                rect.contains(x as f32, y as f32).then_some((rect, *child))
+                            });
 
-                        // If the node under the mouse is the same as the focused node,
-                        // send the event to the focused node
-                        let (mut widget, mut layout) =
-                            self.render_ctx(focus).map(|(w, l)| (w, l.clone())).unwrap();
-
-                        if let Some((child_layout, child_widget)) = child {
-                            layout = Rect {
-                                x: child_layout.x + 1.,
-                                y: child_layout.y + 1.,
-                                width: child_layout.width,
-                                height: child_layout.height,
-                            };
-                            widget = child_widget.clone();
-                        } else if children.len() > 0 {
-                            return Ok(());
+                            if let Some((child_layout, child_widget)) = child {
+                                layout = Rect {
+                                    x: child_layout.x + 1.,
+                                    y: child_layout.y + 1.,
+                                    width: child_layout.width,
+                                    height: child_layout.height,
+                                };
+                                widget = child_widget;
+                            } else {
+                                break;
+                            }
                         }
 
                         let offset_event = Event::Mouse(MouseEvent {
@@ -344,6 +349,8 @@ impl<S: 'static, U: 'static> App<S, U> {
                         });
 
                         widget
+                            .get(&self.layout)
+                            .unwrap()
                             .write()
                             .map_err(|_| Error::WidgetWriteLockError(focus))?
                             .update(
@@ -360,7 +367,7 @@ impl<S: 'static, U: 'static> App<S, U> {
                         || self.config.focus_follows_hover
                     {
                         // If there's no focus, focus the node under the mouse
-                        self.focus = Some(node);
+                        self.focus = Some(node.widget(&self.layout).unwrap());
                     }
                 }
             }
@@ -376,23 +383,21 @@ impl<S: 'static, U: 'static> App<S, U> {
                         let Some(leaf) = self.layout.leaves().first().cloned() else {
                             return Ok(());
                         };
-                        self.set_focus(leaf)?;
+                        self.set_focus(leaf.widget(&self.layout).unwrap())?;
                         return Ok(())
                     };
                     // Retrieve widget trait object from node
-                    let Some(widget) = self
-                        .layout
-                        .widget(focus) else {
-                            return Ok(());
-                        };
+                    let Some(widget) = focus.get(&self.layout) else {
+                        return Ok(());
+                    };
 
                     // Retrieve computed layout for window
                     let Some(layout) = self
-                        .layout
-                        .layout(focus)
-                        .cloned() else {
-                            return Ok(());
-                        };
+                        .rendered.get(focus)
+                        .map(|v| &v.0) 
+                    else {
+                        return Ok(());
+                    };
                     let tx = self.event_tx.clone();
 
                     widget
@@ -401,7 +406,7 @@ impl<S: 'static, U: 'static> App<S, U> {
                         .update(
                             &mut UpdateCtx::new(
                                 focus,
-                                layout,
+                                layout.clone(),
                                 &mut self.layout,
                                 tx,
                                 &mut self.state,
@@ -470,16 +475,13 @@ impl<S: 'static, U: 'static> App<S, U> {
     }
 
     /// Sets the focus to the given node.
-    pub fn set_focus(&mut self, node: NodeId) -> Result<()> {
-        if self.layout.is_container(node) {
-            return Err(Error::ExpectedLeaf(node));
-        }
-        self.focus = Some(node);
+    pub fn set_focus(&mut self, widget: WidgetId) -> Result<()> {
+        self.focus = Some(widget);
         Ok(())
     }
 
     /// Get the id of the currently focused node, if any
-    pub fn get_focus(&self) -> Option<NodeId> {
+    pub fn get_focus(&self) -> Option<WidgetId> {
         self.focus
     }
 
@@ -489,6 +491,7 @@ impl<S: 'static, U: 'static> App<S, U> {
         let next = self.inspect_layout(|l| {
             l.leaves()
                 .into_iter()
+                .map(|v| v.widget(&self.layout).unwrap())
                 .cycle()
                 .skip_while(|v| *v != current)
                 .nth(1)
@@ -500,51 +503,24 @@ impl<S: 'static, U: 'static> App<S, U> {
 
     /// Focus the window in the given direction from the currently focused one
     pub fn focus_direction(&mut self, direction: Direction) -> Result<()> {
-        let current = self.get_focus().ok_or(Error::NoFocus)?;
-        let available = self.inspect_layout(|l| l.adjacent_on_side(current, direction));
-        let Some(next) = available.iter().next() else {
-            return Ok(());
-        };
-        self.set_focus(*next)?;
+        // TODO
+        // let current = self.get_focus().ok_or(Error::NoFocus)?;
+        // let available = self.inspect_layout(|l| l.adjacent_on_side(current, direction));
+        // let Some(next) = available.iter().next() else {
+        //     return Ok(());
+        // };
+        // self.set_focus(*next)?;
         Ok(())
     }
 
-    fn render_recursive(
-        &mut self,
-        owner: NodeId,
-        inner_widget: Option<Arc<RwLock<dyn Widget<U, S>>>>,
-        inner_layout: Option<Rect>,
-        mut screen: &mut Surface,
-    ) {
-        let layout = match inner_layout {
-            Some(layout) => layout,
-            None => {
-                if let Some(layout) = self.layout.layout(owner) {
-                    layout.clone()
-                } else {
-                    return;
-                }
-            }
-        };
-        let widget = match inner_widget.clone() {
-            Some(widget) => widget,
-            None => {
-                if let Some(widget) = self.layout.widget(owner) {
-                    widget.clone()
-                } else {
-                    return;
-                }
-            }
-        };
-
+    fn render_recursive(&mut self, widget: WidgetId, layout: &Rect, screen: &mut Surface) {
         // Draw onto widget screen for composition
         let mut widget_screen = Surface::new(layout.width as usize, layout.height as usize);
 
         // Render widget onto widget screen
-        let focused = self.focus.map(|f| f == owner).unwrap_or(false);
-        let inner_widgets = match widget.read() {
+        let inner_widgets = match widget.get(&self.layout).unwrap().read() {
             Ok(widget) => widget.render(
-                &RenderCtx::new(focused, &self.layout, &self.state),
+                &RenderCtx::new(false, &self.layout, &self.state),
                 &mut widget_screen,
             ),
             Err(_) => return,
@@ -552,43 +528,30 @@ impl<S: 'static, U: 'static> App<S, U> {
 
         // Draw widget onto background screen
         screen.draw_from_screen(&widget_screen, layout.x as usize, layout.y as usize);
-        if inner_widget.is_some() {
-            self.rendered.get_mut(owner).unwrap().push((
-                Rect {
-                    x: layout.x,
-                    y: layout.y,
-                    width: layout.width,
-                    height: layout.height,
-                },
-                widget,
-            ));
-        } else {
-            self.rendered.insert(owner, vec![]);
-        }
+
+        self.rendered.insert(
+            widget,
+            (
+                layout.clone(),
+                inner_widgets
+                    .as_ref()
+                    .map(|w| w.iter().map(|w| w.1).collect()),
+            ),
+        );
 
         if let Some(inner_widgets) = inner_widgets {
-            inner_widgets.into_iter().for_each(|(rect, widget)| {
+            for (inner_layout, inner_widget) in inner_widgets.into_iter() {
                 self.render_recursive(
-                    owner,
-                    Some(widget.clone()),
-                    Some(Rect {
-                        x: layout.x + rect.x,
-                        y: layout.y + rect.y,
-                        width: rect.width,
-                        height: rect.height,
-                    }),
-                    &mut screen,
-                );
-                self.rendered.get_mut(owner).unwrap().push((
-                    Rect {
-                        x: layout.x + rect.x,
-                        y: layout.y + rect.y,
-                        width: rect.width,
-                        height: rect.height,
+                    inner_widget,
+                    &Rect {
+                        x: layout.x + inner_layout.x,
+                        y: layout.y + inner_layout.y,
+                        width: inner_layout.width,
+                        height: inner_layout.height,
                     },
-                    widget,
-                ));
-            });
+                    screen,
+                );
+            }
         }
     }
 
@@ -604,38 +567,33 @@ impl<S: 'static, U: 'static> App<S, U> {
         let floats = self.layout.floats();
 
         for node in leaves.into_iter().chain(floats) {
-            self.render_recursive(node, None, None, &mut screen);
+            let leaf_layout = self.layout.layout(node).unwrap().clone();
+            let leaf_widget = node.widget(&self.layout).unwrap();
+            self.render_recursive(leaf_widget, &leaf_layout, &mut screen);
         }
 
         // Draw contents of background screen to terminal
         self.term.draw_from_screen(&screen, 0, 0);
 
         if let Some(focus) = self.focus {
-            if let Some(layout) = self.layout.layout(focus) {
-                if let Some(cursor) = self.layout.widget(focus).unwrap().read().unwrap().cursor() {
-                    if let Some(child) = cursor.0 {
-                        let child = self.rendered.get(focus).unwrap().get(child).unwrap();
-                        // let cursor = child.1.read().unwrap().cursor().unwrap();
-                        self.term.add_changes(vec![
-                            Change::CursorVisibility(CursorVisibility::Visible),
-                            Change::CursorPosition {
-                                x: Position::Absolute((child.0.x) as usize + cursor.1),
-                                y: Position::Absolute((child.0.y) as usize + cursor.2),
-                            },
-                        ]);
-                    } else {
-                        self.term.add_changes(vec![
-                            Change::CursorVisibility(CursorVisibility::Visible),
-                            Change::CursorPosition {
-                                x: Position::Absolute(layout.x as usize + cursor.1),
-                                y: Position::Absolute(layout.y as usize + cursor.2),
-                            },
-                        ]);
-                    }
-                } else {
-                    self.term
-                        .add_changes(vec![Change::CursorVisibility(CursorVisibility::Hidden)]);
-                }
+            let layout = self.rendered.get(focus).map(|v| &v.0).unwrap();
+            if let Some(cursor) = focus
+                .get(&self.layout)
+                .unwrap()
+                .read()
+                .unwrap()
+                .cursor(&self.layout)
+            {
+                self.term.add_changes(vec![
+                    Change::CursorVisibility(CursorVisibility::Visible),
+                    Change::CursorPosition {
+                        x: Position::Absolute(layout.x as usize + cursor.0),
+                        y: Position::Absolute(layout.y as usize + cursor.1),
+                    },
+                ]);
+            } else {
+                self.term
+                    .add_changes(vec![Change::CursorVisibility(CursorVisibility::Hidden)]);
             }
         }
 

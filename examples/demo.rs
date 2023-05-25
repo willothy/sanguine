@@ -3,13 +3,13 @@ use std::sync::{mpsc::Sender, Arc, RwLock};
 use sanguine::{
     error::*,
     event::{Event, UserEvent},
-    layout::{Axis, Constraint, Direction, NodeId, Rect},
+    layout::{Axis, Constraint, Direction, NodeId, Rect, WidgetId},
     widgets::{Border, Menu, TextBox},
     App, Config, Layout,
 };
 use termwiz::input::{KeyCode, KeyEvent, Modifiers};
 
-fn menu(buf: Arc<RwLock<Vec<String>>>) -> Menu<()> {
+fn menu(buf: Arc<RwLock<Vec<String>>>, layout: &mut Layout) -> NodeId {
     // create a menu widget, and add some items to it
     let mut menu = Menu::new("Demo menu");
     menu.add_item("Quit", "", |_, _, event_tx| {
@@ -34,26 +34,32 @@ fn menu(buf: Arc<RwLock<Vec<String>>>) -> Menu<()> {
         // count buffer lines, and update the menu item
         menu.update_tag(this, |_| buf.read().unwrap().len().to_string())
     });
-    menu
+    let widget = layout.register_widget(menu);
+    let bordered = layout.register_widget(Border::new("Menu", widget));
+    layout.add_leaf(bordered)
 }
 
-fn app(layout: &mut Layout) -> Option<NodeId> {
+fn app(layout: &mut Layout) -> Option<WidgetId> {
     // Create a TextBox widget, wrapped by a Border widget
     let textbox = TextBox::new();
     // Get a copy of the textbox buffer
     let textbox_buffer = textbox.buffer();
+    let textbox_id = layout.register_widget(textbox);
 
     // Add the menu widget
-    let menu = layout.add_leaf(Border::new("Menu".to_owned(), menu(textbox_buffer)));
+    let menu_id = menu(textbox_buffer.clone(), layout);
 
     // Add the first editor to the layout
-    let editor = Border::new("Shared TextBox".to_owned(), textbox);
+    let editor = layout.register_widget(Border::new("TextBox".to_owned(), textbox_id));
     let left = layout.add_leaf(editor);
 
     // Add a floating window
+    let float_textbox = layout.register_widget(TextBox::new());
+    let float_border =
+        layout.register_widget(Border::new("Example Float".to_owned(), float_textbox));
     layout.add_floating(
         // The window will contain a text box
-        Border::new("Example Float", TextBox::new()),
+        float_border,
         Rect {
             x: 10.,
             y: 10.,
@@ -78,7 +84,7 @@ fn app(layout: &mut Layout) -> Option<NodeId> {
         // The container will take up all available space
         Some(Constraint::fill()),
         // The container will contain the cloned first editor, and the second editor
-        [menu, bot_right],
+        [menu_id, bot_right],
     );
 
     // Get the root node of the layout
@@ -90,7 +96,7 @@ fn app(layout: &mut Layout) -> Option<NodeId> {
     layout.add_child(root, left);
     layout.add_child(root, right);
 
-    Some(left)
+    Some(editor)
 }
 
 fn handle_event(state: &mut App, event: &Event<()>, _: Arc<Sender<UserEvent<()>>>) -> Result<bool> {

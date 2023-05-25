@@ -15,7 +15,7 @@ pub struct RenderCtx<'render, U, S> {
 
 /// The data passed to [`Widget::update`]
 pub struct UpdateCtx<'update, U, S> {
-    pub owner: NodeId,
+    pub this: WidgetId,
     pub bounds: Rect,
     pub layout: &'update mut Layout<U, S>,
     pub tx: Arc<Sender<UserEvent<U>>>,
@@ -34,14 +34,14 @@ impl<'render, U, S> RenderCtx<'render, U, S> {
 
 impl<'update, U, S> UpdateCtx<'update, U, S> {
     pub fn new(
-        owner: NodeId,
+        this: WidgetId,
         bounds: Rect,
         layout: &'update mut Layout<U, S>,
         tx: Arc<Sender<UserEvent<U>>>,
         state: &'update mut S,
     ) -> Self {
         Self {
-            owner,
+            this,
             bounds,
             layout,
             tx,
@@ -51,7 +51,7 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
 
     pub fn with_rect<'u>(&'u mut self, rect: Rect) -> UpdateCtx<'u, U, S> {
         UpdateCtx {
-            owner: self.owner,
+            this: self.this,
             bounds: rect,
             layout: self.layout,
             tx: self.tx.clone(),
@@ -71,11 +71,7 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
 pub trait Widget<U, S> {
     /// This method is called every render loop, and is responsible for rendering the widget onto
     /// the provided surface.
-    fn render(
-        &self,
-        cx: &RenderCtx<U, S>,
-        surface: &mut Surface,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>>;
+    fn render(&self, cx: &RenderCtx<U, S>, surface: &mut Surface) -> Option<Vec<(Rect, WidgetId)>>;
 
     #[allow(unused_variables)]
     /// This method is called when an input event is received that targets this widget.
@@ -86,9 +82,14 @@ pub trait Widget<U, S> {
 
     /// This method is called when the widget is focused, to determine where (or if) to display the
     /// cursor.
-    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
+    fn cursor(&self, layout: &Layout<U, S>) -> Option<(usize, usize)> {
         None
     }
+
+    // /// Determines whether the widget can be focused
+    // fn focusable(&self) -> bool {
+    //     true
+    // }
 
     /// This method provides a hint to the layout engine about how much
     /// space the widget should take up.

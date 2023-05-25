@@ -2,20 +2,24 @@
 
 use std::fmt::Display;
 
-use crate::layout::NodeId;
+use crate::layout::{NodeId, WidgetId};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{0}")]
     External(String),
+    #[error("Node not found: {0:?}")]
+    NodeNotFound(NodeId),
     #[error("Widget not found: {0:?}")]
-    WidgetNotFound(NodeId),
+    WidgetNotFound(WidgetId),
     #[error("Signal send failed")]
     SignalSendFail,
-    #[error("Could not acquire widget read lock for {0:?}")]
-    WidgetReadLockError(NodeId),
+    #[error("Could not acquire node read lock for {0:?}")]
+    NodeReadLockError(NodeId),
+    #[error("Could not acquire node write lock for {0:?}")]
+    NodeWriteLockError(NodeId),
     #[error("Could not acquire widget write lock for {0:?}")]
-    WidgetWriteLockError(NodeId),
+    WidgetWriteLockError(WidgetId),
     #[error("Failed to poll input")]
     PollInputFailed,
     #[error("Expected node {0:?} to be a leaf")]

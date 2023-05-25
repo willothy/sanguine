@@ -5,33 +5,39 @@ use std::sync::{Arc, RwLock};
 use crate::{
     error::Error,
     event::Event,
-    layout::Rect,
+    layout::{Rect, WidgetId},
     surface::*,
     widget::{RenderCtx, UpdateCtx},
-    Widget,
+    Layout, Widget,
 };
 
 /// Displays a border around a widget, with a title and a `*` when the widget is focused.
 pub struct Border<U, S> {
     title: String,
-    inner: Arc<RwLock<dyn Widget<U, S>>>,
+    inner: WidgetId,
+    #[doc(hidden)]
+    __phantom: std::marker::PhantomData<(U, S)>,
 }
 
 impl<U, S> Border<U, S> {
-    pub fn new(title: impl Into<String>, inner: impl Widget<U, S> + 'static) -> Self {
-        Self {
-            title: title.into(),
-            inner: Arc::new(RwLock::new(inner)),
-        }
-    }
-
     pub fn from_inner(
         title: impl Into<String>,
-        inner: Arc<RwLock<impl Widget<U, S> + 'static>>,
+        inner: impl Widget<U, S> + 'static,
+        layout: &mut Layout<U, S>,
     ) -> Self {
+        let inner = layout.register_widget(inner);
         Self {
             title: title.into(),
             inner,
+            __phantom: std::marker::PhantomData,
+        }
+    }
+
+    pub fn new(title: impl Into<String>, inner: WidgetId) -> Self {
+        Self {
+            title: title.into(),
+            inner,
+            __phantom: std::marker::PhantomData,
         }
     }
 }
@@ -48,7 +54,7 @@ impl<U, S> Widget<U, S> for Border<U, S> {
         &self,
         cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
+    ) -> Option<Vec<(Rect, WidgetId)>> {
         let (width, height) = surface.dimensions();
         let mut changes = vec![];
         changes.push(Change::Text(TOP_LEFT.to_string()));
@@ -104,12 +110,14 @@ impl<U, S> Widget<U, S> for Border<U, S> {
         Some(vec![(inner_rect, self.inner.clone())])
     }
 
-    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
+    fn cursor(&self, layout: &Layout<U, S>) -> Option<(usize, usize)> {
         self.inner
+            .get(layout)
+            .unwrap()
             .read()
             .unwrap()
-            .cursor()
-            .map(|(_, x, y)| (Some(0), x, y))
+            .cursor(layout)
+            .map(|(x, y)| (x, y))
     }
 
     fn update<'u>(
@@ -125,6 +133,8 @@ impl<U, S> Widget<U, S> for Border<U, S> {
         };
 
         self.inner
+            .get(&cx.layout)
+            .unwrap()
             .write()
             .map_err(|_| Error::external("could not lock widget"))?
             .update(&mut cx.with_rect(rect), event)?;
