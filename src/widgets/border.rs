@@ -1,37 +1,27 @@
 //! Displays a border around a widget, with a title and a `*` when the widget is focused.
 
-use std::sync::{Arc, RwLock};
-
 use crate::{
     error::Error,
     event::Event,
-    layout::Rect,
+    layout::{Rect, WidgetId},
     surface::*,
     widget::{RenderCtx, UpdateCtx},
-    Widget,
+    Widget, WidgetStore,
 };
 
 /// Displays a border around a widget, with a title and a `*` when the widget is focused.
 pub struct Border<U, S> {
     title: String,
-    inner: Arc<RwLock<dyn Widget<U, S>>>,
+    inner: WidgetId,
+    marker: std::marker::PhantomData<(S, U)>,
 }
 
 impl<U, S> Border<U, S> {
-    pub fn new(title: impl Into<String>, inner: impl Widget<U, S> + 'static) -> Self {
+    pub fn new(title: impl Into<String>, inner: WidgetId) -> Self {
         Self {
             title: title.into(),
-            inner: Arc::new(RwLock::new(inner)),
-        }
-    }
-
-    pub fn from_inner(
-        title: impl Into<String>,
-        inner: Arc<RwLock<impl Widget<U, S> + 'static>>,
-    ) -> Self {
-        Self {
-            title: title.into(),
-            inner,
+            inner: inner,
+            marker: std::marker::PhantomData,
         }
     }
 }
@@ -48,7 +38,7 @@ impl<U, S> Widget<U, S> for Border<U, S> {
         &self,
         cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
+    ) -> Option<Vec<(Rect, WidgetId)>> {
         let (width, height) = surface.dimensions();
         let mut changes = vec![];
         changes.push(Change::Text(TOP_LEFT.to_string()));
@@ -104,17 +94,15 @@ impl<U, S> Widget<U, S> for Border<U, S> {
         Some(vec![(inner_rect, self.inner.clone())])
     }
 
-    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
-        self.inner
-            .read()
-            .unwrap()
-            .cursor()
-            .map(|(_, x, y)| (Some(0), x, y))
+    fn cursor(&self, widgets: &WidgetStore<U, S>) -> Option<(Option<usize>, usize, usize)> {
+        let w = widgets.get(self.inner)?;
+        let r = w.read().ok()?.cursor(widgets);
+        r.map(|(_, x, y)| (Some(0), x, y))
     }
 
     fn update<'u>(
         &mut self,
-        cx: &mut UpdateCtx<'u, U, S>,
+        mut cx: &mut UpdateCtx<'u, U, S>,
         event: Event<U>,
     ) -> crate::error::Result<()> {
         let rect = Rect {
@@ -124,10 +112,13 @@ impl<U, S> Widget<U, S> for Border<U, S> {
             height: cx.bounds.height - 2.,
         };
 
-        self.inner
-            .write()
-            .map_err(|_| Error::external("could not lock widget"))?
-            .update(&mut cx.with_rect(rect), event)?;
+        cx.bounds = rect;
+        let w = cx
+            .get_widget(self.inner)
+            .ok_or(Error::external("could not find widget"))?;
+        w.write()
+            .map_err(|e| Error::external(e))?
+            .update(cx, event)?;
         Ok(())
     }
 }

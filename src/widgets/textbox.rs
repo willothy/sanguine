@@ -4,9 +4,10 @@ use crate::{
     error::Error,
     error::Result,
     event::{Event, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent},
-    layout::Rect,
+    layout::{Rect, WidgetId},
     surface::{Change, Position, Surface},
     widget::{RenderCtx, UpdateCtx, Widget},
+    WidgetStore,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +166,7 @@ impl<U, S> Widget<U, S> for TextBox {
         &self,
         _cx: &RenderCtx<'r, U, S>,
         surface: &mut Surface,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>> {
+    ) -> Option<Vec<(Rect, WidgetId)>> {
         let (width, height) = surface.dimensions();
         self.buf
             .read()
@@ -186,7 +187,7 @@ impl<U, S> Widget<U, S> for TextBox {
         None
     }
 
-    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
+    fn cursor(&self, _: &WidgetStore<U, S>) -> Option<(Option<usize>, usize, usize)> {
         Some((None, self.cursor.x, self.cursor.y))
     }
 

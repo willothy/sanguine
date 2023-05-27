@@ -3,57 +3,68 @@ use std::sync::{mpsc::Sender, Arc, RwLock};
 use sanguine::{
     error::*,
     event::{Event, UserEvent},
-    layout::{Axis, Constraint, Direction, NodeId, Rect},
+    layout::{Axis, Constraint, Direction, NodeId, Rect, WidgetId},
     widgets::{Border, Menu, TextBox},
-    App, Config, Layout,
+    App, Config, Layout, WidgetStore,
 };
 use termwiz::input::{KeyCode, KeyEvent, Modifiers};
 
-fn menu(buf: Arc<RwLock<Vec<String>>>) -> Menu<()> {
+fn menu(buf: Arc<RwLock<Vec<String>>>, widgets: &mut WidgetStore<(), ()>) -> WidgetId {
     // create a menu widget, and add some items to it
-    let mut menu = Menu::new("Demo menu");
-    menu.add_item("Quit", "", |_, _, event_tx| {
-        // exit button using the event sender
-        event_tx.send(UserEvent::Exit).ok();
-    });
-    menu.add_item("Delete", "", {
-        // use a shared copy of the textbox buffer, and delete the last character of the buffer
-        let buf = buf.clone();
-        move |_, _, _| {
-            let mut w = buf.write().unwrap();
-            let len = w.len();
-            let last = w.last_mut().unwrap();
-            if last.is_empty() && len > 1 {
-                w.pop();
-            } else if !last.is_empty() {
-                last.pop();
+    let menu_id = widgets.register({
+        let mut menu = Menu::new("Demo menu");
+        menu.add_item("Quit", "", move |_, _, event_tx| {
+            // exit button using the event sender
+            event_tx.send(UserEvent::Exit).ok();
+        });
+        menu.add_item("Delete", "", {
+            // use a shared copy of the textbox buffer, and delete the last character of the buffer
+            let buf = buf.clone();
+            move |_, _, _| {
+                let mut w = buf.write().unwrap();
+                let len = w.len();
+                let last = w.last_mut().unwrap();
+                if last.is_empty() && len > 1 {
+                    w.pop();
+                } else if !last.is_empty() {
+                    last.pop();
+                }
             }
-        }
+        });
+        menu.add_item("Get line count: ", "<unknown>", {
+            // use a shared copy of the textbox buffer, and update the menu item with the line count
+            let buf = buf.clone();
+            move |this, menu, _| {
+                // count buffer lines, and update the menu item
+                menu.update_tag(this, |_| buf.read().unwrap().len().to_string())
+            }
+        });
+        menu
     });
-    menu.add_item("Get line count: ", "<unknown>", move |this, menu, _| {
-        // count buffer lines, and update the menu item
-        menu.update_tag(this, |_| buf.read().unwrap().len().to_string())
-    });
-    menu
+    widgets.register(Border::new("Menu".to_owned(), menu_id))
 }
 
-fn app(layout: &mut Layout) -> Option<NodeId> {
+fn app(layout: &mut Layout, widgets: &mut WidgetStore<(), ()>) -> Option<NodeId> {
     // Create a TextBox widget, wrapped by a Border widget
     let textbox = TextBox::new();
     // Get a copy of the textbox buffer
-    let textbox_buffer = textbox.buffer();
+    let buffer = textbox.buffer();
 
     // Add the menu widget
-    let menu = layout.add_leaf(Border::new("Menu".to_owned(), menu(textbox_buffer)));
+    let menu = menu(Arc::clone(&buffer), widgets);
+    let menu_id = layout.add_leaf(menu);
 
     // Add the first editor to the layout
-    let editor = Border::new("Shared TextBox".to_owned(), textbox);
+    let textbox = widgets.register(textbox);
+    let editor = widgets.register(Border::new("Shared TextBox", textbox));
     let left = layout.add_leaf(editor);
 
     // Add a floating window
+    let textbox = widgets.register(TextBox::new());
+    let editor_2 = widgets.register(Border::new("Floating", textbox));
     layout.add_floating(
         // The window will contain a text box
-        Border::new("Example Float", TextBox::new()),
+        editor_2,
         Rect {
             x: 10.,
             y: 10.,
@@ -68,9 +79,6 @@ fn app(layout: &mut Layout) -> Option<NodeId> {
     // the same buffer.
     let bot_right = layout.clone_leaf(left);
 
-    // Add the second editor to the layout
-    // let bot_right = layout.add_leaf(editor_2);
-
     // Create a container to hold the two right hand side editors
     let right = layout.add_with_children(
         // The container will be a vertical layout
@@ -78,7 +86,7 @@ fn app(layout: &mut Layout) -> Option<NodeId> {
         // The container will take up all available space
         Some(Constraint::fill()),
         // The container will contain the cloned first editor, and the second editor
-        [menu, bot_right],
+        [menu_id, bot_right],
     );
 
     // Get the root node of the layout
@@ -90,6 +98,8 @@ fn app(layout: &mut Layout) -> Option<NodeId> {
     layout.add_child(root, left);
     layout.add_child(root, right);
 
+    // return the left node to automatically focus it on app init (only works with
+    // `App::with_layout`)
     Some(left)
 }
 

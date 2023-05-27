@@ -4,6 +4,7 @@ use crate::{
     event::{Event, UserEvent},
     layout::*,
     surface::Surface,
+    WidgetStore,
 };
 
 /// The data passed to [`Widget::render`]
@@ -20,6 +21,7 @@ pub struct UpdateCtx<'update, U, S> {
     pub layout: &'update mut Layout<U, S>,
     pub tx: Arc<Sender<UserEvent<U>>>,
     pub state: &'update mut S,
+    widgets: *mut WidgetStore<U, S>,
 }
 
 impl<'render, U, S> RenderCtx<'render, U, S> {
@@ -36,6 +38,7 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
     pub fn new(
         owner: NodeId,
         bounds: Rect,
+        widgets: *mut WidgetStore<U, S>,
         layout: &'update mut Layout<U, S>,
         tx: Arc<Sender<UserEvent<U>>>,
         state: &'update mut S,
@@ -43,16 +46,26 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
         Self {
             owner,
             bounds,
+            widgets,
             layout,
             tx,
             state,
         }
     }
 
+    pub fn get_widget(&self, id: WidgetId) -> Option<Arc<RwLock<dyn Widget<U, S>>>> {
+        unsafe { (*self.widgets).get(id).cloned() }
+    }
+
+    pub fn register_widget(&mut self, widget: impl Widget<U, S> + 'static) -> WidgetId {
+        unsafe { (*self.widgets).register(widget) }
+    }
+
     pub fn with_rect<'u>(&'u mut self, rect: Rect) -> UpdateCtx<'u, U, S> {
         UpdateCtx {
             owner: self.owner,
             bounds: rect,
+            widgets: self.widgets,
             layout: self.layout,
             tx: self.tx.clone(),
             state: self.state,
@@ -68,16 +81,12 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
 ///
 /// Widgets can be shared behind an [`Arc<RwLock<dyn Widget>>`] to show the same widget in multiple
 /// windows.
+#[allow(unused_variables)]
 pub trait Widget<U, S> {
     /// This method is called every render loop, and is responsible for rendering the widget onto
     /// the provided surface.
-    fn render(
-        &self,
-        cx: &RenderCtx<U, S>,
-        surface: &mut Surface,
-    ) -> Option<Vec<(Rect, Arc<RwLock<dyn Widget<U, S>>>)>>;
+    fn render(&self, cx: &RenderCtx<U, S>, surface: &mut Surface) -> Option<Vec<(Rect, WidgetId)>>;
 
-    #[allow(unused_variables)]
     /// This method is called when an input event is received that targets this widget.
     /// It allows the widget to update its internal state in response to an event.
     fn update(&mut self, cx: &mut UpdateCtx<U, S>, event: Event<U>) -> crate::error::Result<()> {
@@ -86,7 +95,7 @@ pub trait Widget<U, S> {
 
     /// This method is called when the widget is focused, to determine where (or if) to display the
     /// cursor.
-    fn cursor(&self) -> Option<(Option<usize>, usize, usize)> {
+    fn cursor(&self, widgets: &WidgetStore<U, S>) -> Option<(Option<usize>, usize, usize)> {
         None
     }
 
@@ -94,5 +103,23 @@ pub trait Widget<U, S> {
     /// space the widget should take up.
     fn constraint(&self) -> Constraint {
         Constraint::Fill
+    }
+}
+
+impl<U, S> Widget<U, S> for Box<dyn Widget<U, S>> {
+    fn render(&self, cx: &RenderCtx<U, S>, surface: &mut Surface) -> Option<Vec<(Rect, WidgetId)>> {
+        self.as_ref().render(cx, surface)
+    }
+
+    fn update(&mut self, cx: &mut UpdateCtx<U, S>, event: Event<U>) -> crate::error::Result<()> {
+        self.as_mut().update(cx, event)
+    }
+
+    fn cursor(&self, widgets: &WidgetStore<U, S>) -> Option<(Option<usize>, usize, usize)> {
+        self.as_ref().cursor(widgets)
+    }
+
+    fn constraint(&self) -> Constraint {
+        self.as_ref().constraint()
     }
 }

@@ -13,31 +13,6 @@ new_key_type! {
     pub struct WidgetId;
 }
 
-impl WidgetId {
-    pub fn get<U, S>(
-        &self,
-        widgets: &SlotMap<WidgetId, Arc<RwLock<dyn Widget<U, S>>>>,
-    ) -> Arc<RwLock<dyn Widget<U, S>>> {
-        widgets[*self].clone()
-    }
-}
-
-impl NodeId {
-    pub fn get<'a, U, S>(
-        &'a self,
-        nodes: &'a SlotMap<NodeId, LayoutNode>,
-    ) -> Option<&'a LayoutNode> {
-        nodes.get(*self)
-    }
-
-    pub fn get_mut<'a, U, S>(
-        &'a self,
-        nodes: &'a mut SlotMap<NodeId, LayoutNode>,
-    ) -> Option<&'a mut LayoutNode> {
-        nodes.get_mut(*self)
-    }
-}
-
 pub struct Leaf {
     widget: WidgetId,
     parent: Option<NodeId>,
@@ -51,15 +26,8 @@ impl Leaf {
         }
     }
 
-    pub fn from_widget<S, U>(
-        widget: Arc<RwLock<dyn Widget<U, S>>>,
-        widgets: &mut SlotMap<WidgetId, Arc<RwLock<dyn Widget<U, S>>>>,
-    ) -> Self {
-        let widget = widgets.insert(widget);
-        Self {
-            widget,
-            parent: None,
-        }
+    pub fn widget(&self) -> WidgetId {
+        self.widget
     }
 }
 
@@ -121,14 +89,20 @@ impl LayoutNode {
             _ => None,
         }
     }
+
+    pub fn widget(&self) -> Option<WidgetId> {
+        match self {
+            Self::Leaf(leaf) => Some(leaf.widget()),
+            Self::Floating(float) => Some(float.widget()),
+            _ => None,
+        }
+    }
 }
 
 /// The struct that manages layout for a Sanguine app
 pub struct Layout<U = (), S = ()> {
     /// The arena containing all nodes
     nodes: SlotMap<NodeId, LayoutNode>,
-    /// The arena containing all widgets
-    widgets: SlotMap<WidgetId, Arc<RwLock<dyn Widget<U, S>>>>,
     /// Render results. Will be stale or zeroed if [`Layout::compute`] isn't called after each
     /// change.
     layout: SecondaryMap<NodeId, Rect>,
@@ -158,10 +132,8 @@ impl<U, S> Layout<U, S> {
             parent: None,
         }));
         layout.insert(root, Rect::default());
-        let widgets = SlotMap::with_key();
         Self {
             nodes,
-            widgets,
             layout,
             root,
             floating: FloatStack::new(),
@@ -504,9 +476,7 @@ impl<U, S> Layout<U, S> {
             Some(LayoutNode::Container(container)) => {
                 container.size.clone().unwrap_or(Constraint::Fill)
             }
-            Some(LayoutNode::Leaf(leaf)) => {
-                leaf.widget.get(&self.widgets).read().unwrap().constraint()
-            }
+            Some(LayoutNode::Leaf(leaf)) => Constraint::Fill, // self.widgets.get(leaf.widget).unwrap().constraint(),
             Some(LayoutNode::Floating(_)) => Constraint::Fill,
             None => Constraint::Fill,
         }
@@ -593,6 +563,16 @@ impl<U, S> Layout<U, S> {
         self.layout.remove(node);
     }
 
+    /// Gets a node based on its id
+    pub fn node(&self, node: NodeId) -> Option<&LayoutNode> {
+        self.nodes.get(node)
+    }
+
+    /// Gets a node based on its id
+    pub fn node_mut(&mut self, node: NodeId) -> Option<&mut LayoutNode> {
+        self.nodes.get_mut(node)
+    }
+
     /// Sets the size hint for a container
     pub fn set_size(&mut self, node: NodeId, size: Constraint) {
         self.dirty = true;
@@ -654,27 +634,16 @@ impl<U, S> Layout<U, S> {
     }
 
     /// Adds a new leaf node to the layout.
-    pub fn add_leaf(&mut self, widget: impl Widget<U, S> + 'static) -> NodeId {
+    pub fn add_leaf(&mut self, widget: WidgetId) -> NodeId {
         self.dirty = true;
-        let widget = self.widgets.insert(Arc::new(RwLock::new(widget)));
         let node = LayoutNode::Leaf(Leaf::new(widget));
         let id = self.nodes.insert(node);
         self.layout.insert(id, Rect::default());
         id
     }
 
-    /// Adds a new leaf from Arc'd widget
-    pub fn add_leaf_raw(&mut self, widget: Arc<RwLock<dyn Widget<U, S>>>) -> NodeId {
+    pub fn add_floating(&mut self, widget: WidgetId, rect: Rect) -> NodeId {
         self.dirty = true;
-        let node = LayoutNode::Leaf(Leaf::from_widget(widget, &mut self.widgets));
-        let id = self.nodes.insert(node);
-        self.layout.insert(id, Rect::default());
-        id
-    }
-
-    pub fn add_floating(&mut self, widget: impl Widget<U, S> + 'static, rect: Rect) -> NodeId {
-        self.dirty = true;
-        let widget = self.widgets.insert(Arc::new(RwLock::new(widget)));
         let node = LayoutNode::Floating(Floating::new::<U, S>(widget, rect.clone()));
         let id = self.nodes.insert(node);
         self.layout.insert(id, rect);
@@ -687,9 +656,8 @@ impl<U, S> Layout<U, S> {
         if !self.is_floating(node) {
             return;
         }
-        let widget = self.widget(node).unwrap();
         if let Some(floating) = self.nodes.get_mut(node) {
-            let leaf = Leaf::from_widget(widget, &mut self.widgets);
+            let leaf = Leaf::new(floating.widget().unwrap());
             let new = LayoutNode::Leaf(leaf);
             self.floating.remove(node);
             *floating = new;
@@ -822,15 +790,6 @@ impl<U, S> Layout<U, S> {
         }
     }
 
-    /// If the given node is a leaf, returns a Arc pointing to its widget.
-    pub fn widget(&self, node: NodeId) -> Option<Arc<RwLock<dyn Widget<U, S>>>> {
-        match self.nodes.get(node) {
-            Some(LayoutNode::Leaf(leaf)) => Some(leaf.widget.get(&self.widgets)),
-            Some(LayoutNode::Floating(float)) => Some(float.widget::<U, S>().get(&self.widgets)),
-            _ => None,
-        }
-    }
-
     /// Returns the parent of the given node, if any.
     pub fn parent(&self, node: NodeId) -> Option<NodeId> {
         match self.nodes.get(node) {
@@ -867,12 +826,7 @@ impl<U, S> Layout<U, S> {
     ///
     /// If the node is a leaf, it will be replaced by a container, which will contain it and the
     /// newly created node.
-    pub fn split(
-        &mut self,
-        node: NodeId,
-        direction: Axis,
-        widget: impl Widget<U, S> + 'static,
-    ) -> NodeId {
+    pub fn split(&mut self, node: NodeId, direction: Axis, widget: WidgetId) -> NodeId {
         self.dirty = true;
         if self.is_leaf(node) {
             let new = self.add_container(direction, None);
@@ -916,49 +870,4 @@ pub mod tests {
     };
 
     use super::Layout;
-
-    #[test]
-    fn adjacent() {
-        // Create the layout struct
-        let mut layout = Layout::<(), ()>::new();
-
-        // Create a TextBox widget, wrapped by a Border widget
-        let editor_1 = Border::new("textbox 1".to_owned(), TextBox::new());
-
-        // Add the first editor to the layout
-        let left = layout.add_leaf(editor_1);
-
-        // Add the menu widget
-        let top_right = layout.clone_leaf(left);
-
-        // Clone the first editor to add it to the layout again
-        // This widget will be *shared* between the two windows, meaning that changes to the underlying
-        // buffer will be shown in both windows and focusing on either window will allow you to edit
-        // the same buffer.
-        let bot_right = layout.clone_leaf(left);
-
-        // Add the second editor to the layout
-        // let bot_right = layout.add_leaf(editor_2);
-
-        // Create a container to hold the two right hand side editors
-        let right = layout.add_with_children(
-            // The container will be a vertical layout
-            Axis::Vertical,
-            // The container will take up all available space
-            Some(Constraint::fill()),
-            // The container will contain the cloned first editor, and the second editor
-            [top_right, bot_right],
-        );
-
-        // Get the root node of the layout
-        let root = layout.root();
-        // Ensure that the root container is laid out horizontally
-        layout.set_direction(root, Axis::Horizontal);
-
-        // Add the left window (leaf) and the right container to the root
-        layout.add_child(root, left);
-        layout.add_child(root, right);
-
-        let _adjacent = layout.adjacent(left);
-    }
 }

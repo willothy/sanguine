@@ -45,7 +45,7 @@ impl Floating {
         self.z_index
     }
 
-    pub fn widget<U, S>(&self) -> WidgetId {
+    pub fn widget(&self) -> WidgetId {
         self.widget
     }
 
