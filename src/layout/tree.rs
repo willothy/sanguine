@@ -1,12 +1,9 @@
-use std::sync::{Arc, RwLock};
-
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use super::{
     floating::{FloatStack, Floating},
     geometry::{Axis, Constraint, Direction, Rect},
 };
-use crate::widget::Widget;
 
 new_key_type! {
     pub struct NodeId;
@@ -476,7 +473,7 @@ impl<U, S> Layout<U, S> {
             Some(LayoutNode::Container(container)) => {
                 container.size.clone().unwrap_or(Constraint::Fill)
             }
-            Some(LayoutNode::Leaf(leaf)) => Constraint::Fill, // self.widgets.get(leaf.widget).unwrap().constraint(),
+            Some(LayoutNode::Leaf(_)) => Constraint::Fill,
             Some(LayoutNode::Floating(_)) => Constraint::Fill,
             None => Constraint::Fill,
         }
@@ -860,14 +857,4 @@ impl<U, S> Layout<U, S> {
     fn is_floating(&self, node: NodeId) -> bool {
         matches!(self.nodes.get(node), Some(LayoutNode::Floating(_)))
     }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use crate::{
-        layout::{Axis, Constraint},
-        widgets::{Border, TextBox},
-    };
-
-    use super::Layout;
 }

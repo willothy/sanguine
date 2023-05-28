@@ -41,6 +41,10 @@ fn menu(buf: Arc<RwLock<Vec<String>>>, widgets: &mut WidgetStore<(), ()>) -> Wid
         });
         menu
     });
+    let menu = widgets.resolve_mut::<Menu<()>>(menu_id).unwrap();
+    menu.add_item("Test", "", |_, menu, _| {
+        menu.add_item("Test", "added at runtime", |_, _, _| {})
+    });
     widgets.register(Border::new("Menu".to_owned(), menu_id))
 }
 

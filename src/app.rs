@@ -1,5 +1,5 @@
 use std::{
-    sync::{atomic::AtomicBool, mpsc::Sender, Arc, RwLock},
+    sync::{atomic::AtomicBool, mpsc::Sender, Arc},
     time::Duration,
 };
 
@@ -57,7 +57,7 @@ pub type GlobalHandler<S, U> =
     dyn Fn(&mut App<S, U>, &Event<U>, Arc<Sender<UserEvent<U>>>) -> Result<bool>;
 
 pub struct WidgetStore<U, S> {
-    widgets: SlotMap<WidgetId, Arc<RwLock<dyn Widget<U, S>>>>,
+    widgets: SlotMap<WidgetId, Box<dyn Widget<U, S>>>,
 }
 
 impl<U, S> WidgetStore<U, S> {
@@ -67,15 +67,51 @@ impl<U, S> WidgetStore<U, S> {
         }
     }
 
-    pub fn get(&self, id: WidgetId) -> Option<&Arc<RwLock<dyn Widget<U, S>>>> {
-        self.widgets.get(id)
+    pub fn get(&self, id: WidgetId) -> Option<&dyn Widget<U, S>> {
+        self.widgets
+            .get(id)
+            .map(|v| unsafe { (v.as_ref() as *const dyn Widget<U, S>).as_ref() })
+            .flatten()
+    }
+
+    pub fn get_mut(&mut self, id: WidgetId) -> Option<&mut dyn Widget<U, S>> {
+        self.widgets
+            .get_mut(id)
+            .map(|v| unsafe { (v.as_mut() as *mut dyn Widget<U, S>).as_mut() })
+            .flatten()
+    }
+
+    pub fn resolve<W>(&mut self, id: WidgetId) -> Option<&W>
+    where
+        W: Widget<U, S> + 'static,
+    {
+        // Safety: The pointer is valid for the lifetime of the WidgetStore, and the WidgetStore
+        // lives for the whole lifetime of the app.
+        self.widgets
+            .get_mut(id)
+            .map(|b| (*b).as_ref().as_any().downcast_ref::<W>())
+            .flatten()
+    }
+
+    pub fn resolve_mut<W>(&mut self, id: WidgetId) -> Option<&mut W>
+    where
+        W: Widget<U, S> + 'static,
+    {
+        self.widgets
+            .get_mut(id)
+            .map(|b| (*b).as_mut().as_any_mut().downcast_mut::<W>())
+            .flatten()
     }
 
     pub fn register(&mut self, widget: impl Widget<U, S> + 'static) -> WidgetId {
-        self.widgets.insert(Arc::new(RwLock::new(widget)))
+        self.widgets.insert(Box::new(widget))
     }
 
-    pub fn remove(&mut self, id: WidgetId) -> Option<Arc<RwLock<dyn Widget<U, S>>>> {
+    pub fn register_boxed(&mut self, widget: Box<dyn Widget<U, S>>) -> WidgetId {
+        self.widgets.insert(widget)
+    }
+
+    pub fn remove(&mut self, id: WidgetId) -> Option<Box<dyn Widget<U, S>>> {
         self.widgets.remove(id)
     }
 }
@@ -229,11 +265,11 @@ impl<S: 'static, U: 'static> App<S, U> {
         self.widgets.register(widget)
     }
 
-    pub fn get_widget(&self, id: WidgetId) -> Option<&Arc<RwLock<dyn Widget<U, S>>>> {
+    pub fn get_widget(&self, id: WidgetId) -> Option<&dyn Widget<U, S>> {
         self.widgets.get(id)
     }
 
-    pub fn remove_widget(&mut self, id: WidgetId) -> Option<Arc<RwLock<dyn Widget<U, S>>>> {
+    pub fn remove_widget(&mut self, id: WidgetId) -> Option<Box<dyn Widget<U, S>>> {
         self.widgets.remove(id)
     }
 
@@ -379,9 +415,9 @@ impl<S: 'static, U: 'static> App<S, U> {
                         );
                         let widget = self
                             .widgets
-                            .get(widget)
+                            .get_mut(widget)
                             .ok_or(Error::WidgetNotFound(focus))?;
-                        widget.write().unwrap().update(&mut cx, offset_event)?;
+                        widget.update(&mut cx, offset_event)?;
                     } else if *mouse_buttons == MouseButtons::LEFT
                         || self.config.focus_follows_hover
                     {
@@ -433,9 +469,9 @@ impl<S: 'static, U: 'static> App<S, U> {
                     );
                     let w = self
                         .widgets
-                        .get(widget)
+                        .get_mut(widget)
                         .ok_or(Error::WidgetWriteLockError(focus))?;
-                    w.write().unwrap().update(&mut cx, event)?;
+                    w.update(&mut cx, event)?;
                 };
             }
         }
@@ -583,7 +619,7 @@ impl<S: 'static, U: 'static> App<S, U> {
         // Render widget onto widget screen
         let focused = self.focus.map(|f| f == owner).unwrap_or(false);
         let inner_widgets = match self.widgets.get(widget) {
-            Some(widget) => widget.read().unwrap().render(
+            Some(widget) => widget.render(
                 &RenderCtx::new(focused, &self.layout, &self.state),
                 &mut widget_screen,
             ),
@@ -655,7 +691,7 @@ impl<S: 'static, U: 'static> App<S, U> {
                 let widget_id = self.layout.node(focus).unwrap().widget().unwrap();
                 if let Some(cursor) = self
                     .get_widget(widget_id)
-                    .map(|w| w.read().unwrap().cursor(&self.widgets))
+                    .map(|w| w.cursor(&self.widgets))
                     .flatten()
                 {
                     if let Some(child) = cursor.0 {

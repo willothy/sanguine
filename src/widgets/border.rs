@@ -33,7 +33,7 @@ const TOP_RIGHT: char = '┐';
 const BOTTOM_LEFT: char = '└';
 const BOTTOM_RIGHT: char = '┘';
 
-impl<U, S> Widget<U, S> for Border<U, S> {
+impl<U: 'static, S: 'static> Widget<U, S> for Border<U, S> {
     fn render<'r>(
         &self,
         cx: &RenderCtx<'r, U, S>,
@@ -96,7 +96,7 @@ impl<U, S> Widget<U, S> for Border<U, S> {
 
     fn cursor(&self, widgets: &WidgetStore<U, S>) -> Option<(Option<usize>, usize, usize)> {
         let w = widgets.get(self.inner)?;
-        let r = w.read().ok()?.cursor(widgets);
+        let r = w.cursor(widgets);
         r.map(|(_, x, y)| (Some(0), x, y))
     }
 
@@ -114,11 +114,17 @@ impl<U, S> Widget<U, S> for Border<U, S> {
 
         cx.bounds = rect;
         let w = cx
-            .get_widget(self.inner)
+            .get_widget_mut(self.inner)
             .ok_or(Error::external("could not find widget"))?;
-        w.write()
-            .map_err(|e| Error::external(e))?
-            .update(cx, event)?;
+        w.update(cx, event)?;
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }

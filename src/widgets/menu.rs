@@ -108,7 +108,7 @@ impl<U> Menu<U> {
     }
 }
 
-impl<U, S> Widget<U, S> for Menu<U> {
+impl<U: 'static, S: 'static> Widget<U, S> for Menu<U> {
     fn render<'r>(
         &self,
         _cx: &RenderCtx<'r, U, S>,
@@ -187,5 +187,13 @@ impl<U, S> Widget<U, S> for Menu<U> {
         }
 
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut<'a>(&'a mut self) -> &'a mut dyn std::any::Any {
+        self
     }
 }

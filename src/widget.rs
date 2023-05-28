@@ -1,4 +1,4 @@
-use std::sync::{mpsc::Sender, Arc, RwLock};
+use std::sync::{mpsc::Sender, Arc};
 
 use crate::{
     event::{Event, UserEvent},
@@ -53,8 +53,20 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
         }
     }
 
-    pub fn get_widget(&self, id: WidgetId) -> Option<Arc<RwLock<dyn Widget<U, S>>>> {
-        unsafe { (*self.widgets).get(id).cloned() }
+    pub fn get_widget<'a>(&self, id: WidgetId) -> Option<&'a dyn Widget<U, S>> {
+        unsafe { (*self.widgets).get(id) }
+    }
+
+    pub fn get_widget_mut<'a>(&mut self, id: WidgetId) -> Option<&'a mut dyn Widget<U, S>> {
+        unsafe { (*self.widgets).get_mut(id) }
+    }
+
+    pub fn resolve<'a, T: Widget<U, S> + 'static>(&self, id: WidgetId) -> Option<&T> {
+        unsafe { (*self.widgets).resolve(id) }
+    }
+
+    pub fn resolve_mut<'a, T: Widget<U, S> + 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
+        unsafe { (*self.widgets).resolve_mut(id) }
     }
 
     pub fn register_widget(&mut self, widget: impl Widget<U, S> + 'static) -> WidgetId {
@@ -101,25 +113,11 @@ pub trait Widget<U, S> {
 
     /// This method provides a hint to the layout engine about how much
     /// space the widget should take up.
-    fn constraint(&self) -> Constraint {
+    fn constraint(&self, widgets: &WidgetStore<U, S>) -> Constraint {
         Constraint::Fill
     }
-}
 
-impl<U, S> Widget<U, S> for Box<dyn Widget<U, S>> {
-    fn render(&self, cx: &RenderCtx<U, S>, surface: &mut Surface) -> Option<Vec<(Rect, WidgetId)>> {
-        self.as_ref().render(cx, surface)
-    }
+    fn as_any(&self) -> &dyn std::any::Any;
 
-    fn update(&mut self, cx: &mut UpdateCtx<U, S>, event: Event<U>) -> crate::error::Result<()> {
-        self.as_mut().update(cx, event)
-    }
-
-    fn cursor(&self, widgets: &WidgetStore<U, S>) -> Option<(Option<usize>, usize, usize)> {
-        self.as_ref().cursor(widgets)
-    }
-
-    fn constraint(&self) -> Constraint {
-        self.as_ref().constraint()
-    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }

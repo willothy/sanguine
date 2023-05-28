@@ -36,6 +36,14 @@ impl<U, S> Widget<U, S> for MarkdownPreview {
         surface.add_change(Change::AllAttributes(CellAttributes::default()));
         None
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 fn main() -> Result<()> {
