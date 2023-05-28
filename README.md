@@ -2,9 +2,9 @@
 
 Create dynamic, performant TUI applications in Rust.
 
-Sanguine was created from the need for a library tailored for _complex_ TUI applications such as text editors and terminal multiplexers. The Rust ecosystem contains many great crates for building TUI apps, but many are geared towards small dashboard-like apps and implement immediate-mode rendering or struggle with mouse events.
+Sanguine was created from the need for a library tailored for window/layout-based TUI applications such as text editors and terminal multiplexers. The Rust ecosystem contains many great crates for building TUI apps, but many are geared towards smaller applications and don't easily allow for complex layouts to be modified at runtime.
 
-Sanguine implements a tree-based layout API that can be updated at runtime, with a custom constraint algorithm geared towards rendering to the terminal. Layout results are cached between renders for performance, and are only recomputed when the layout is changed. Widgets can be nested and mouse events are handled properly for widgets at any depth - widgets only need to handle mouse events based on local position. Widgets can optionally specify a cursor location to allow for implementations of text editor windows and more.
+Sanguine implements a tree-based layout API that can be updated at runtime, with a simple, custom constraint algorithm geared towards rendering to the terminal. Layout results are cached between renders for performance, and are only recomputed when the layout is changed. Widgets can be nested and mouse events are handled properly for widgets at any depth - widgets only need to handle mouse events based on local position. Widgets can optionally specify a cursor location to allow for implementations of text editor windows and more.
 
 It is built on top of [Termwiz](https://docs.rs/termwiz)' `BufferedTerminal`, which optimizes terminal writes to maximize performance.
 
