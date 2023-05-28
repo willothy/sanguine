@@ -71,23 +71,22 @@ impl<U, S> WidgetStore<U, S> {
         self.widgets.get(id).map(|v| v.as_ref())
     }
 
-    pub fn get_mut(&mut self, id: WidgetId) -> Option<&mut dyn Widget<U, S>> {
+    pub fn get_mut<'a>(&mut self, id: WidgetId) -> Option<&'a mut dyn Widget<U, S>> {
         self.widgets
             .get_mut(id)
             // Safety: The pointer will be valid for as long as the WidgetStore is alive, and the
-            // WidgetStore lives for the whole lifetime of the app.
+            // WidgetStore lives for the whole lifetime of the app. This is just a bit of a hack
+            // to shut the borrow checker up.
             .map(|v| unsafe { (v.as_mut() as *mut dyn Widget<U, S>).as_mut() })
             .flatten()
     }
 
-    pub fn resolve<W>(&mut self, id: WidgetId) -> Option<&W>
+    pub fn resolve<W>(&self, id: WidgetId) -> Option<&W>
     where
         W: Widget<U, S> + 'static,
     {
-        // Safety: The pointer is valid for the lifetime of the WidgetStore, and the WidgetStore
-        // lives for the whole lifetime of the app.
         self.widgets
-            .get_mut(id)
+            .get(id)
             .map(|b| (*b).as_ref().as_any().downcast_ref::<W>())
             .flatten()
     }
@@ -270,6 +269,17 @@ impl<S: 'static, U: 'static> App<S, U> {
 
     pub fn remove_widget(&mut self, id: WidgetId) -> Option<Box<dyn Widget<U, S>>> {
         self.widgets.remove(id)
+    }
+
+    pub fn resolve_widget<W: Widget<U, S> + 'static>(&mut self, id: WidgetId) -> Option<&W> {
+        self.widgets.resolve(id)
+    }
+
+    pub fn resolve_widget_mut<W: Widget<U, S> + 'static>(
+        &mut self,
+        id: WidgetId,
+    ) -> Option<&mut W> {
+        self.widgets.resolve_mut(id)
     }
 
     pub fn new_with_state(config: Config, state: S) -> Result<Self> {
@@ -617,11 +627,9 @@ impl<S: 'static, U: 'static> App<S, U> {
 
         // Render widget onto widget screen
         let focused = self.focus.map(|f| f == owner).unwrap_or(false);
+        let cx = RenderCtx::new(focused, &self.layout, &self.widgets, &self.state);
         let inner_widgets = match self.widgets.get(widget) {
-            Some(widget) => widget.render(
-                &RenderCtx::new(focused, &self.layout, &self.state),
-                &mut widget_screen,
-            ),
+            Some(widget) => widget.render(&cx, &mut widget_screen),
             None => return,
         };
 

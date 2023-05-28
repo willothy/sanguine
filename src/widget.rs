@@ -1,4 +1,7 @@
-use std::sync::{mpsc::Sender, Arc};
+use std::{
+    ptr::NonNull,
+    sync::{mpsc::Sender, Arc},
+};
 
 use crate::{
     event::{Event, UserEvent},
@@ -12,6 +15,7 @@ pub struct RenderCtx<'render, U, S> {
     pub focused: bool,
     pub layout: &'render Layout<U, S>,
     pub state: &'render S,
+    widgets: &'render WidgetStore<U, S>,
 }
 
 /// The data passed to [`Widget::update`]
@@ -21,16 +25,30 @@ pub struct UpdateCtx<'update, U, S> {
     pub layout: &'update mut Layout<U, S>,
     pub tx: Arc<Sender<UserEvent<U>>>,
     pub state: &'update mut S,
-    widgets: *mut WidgetStore<U, S>,
+    widgets: NonNull<WidgetStore<U, S>>,
 }
 
 impl<'render, U, S> RenderCtx<'render, U, S> {
-    pub fn new(focused: bool, layout: &'render Layout<U, S>, state: &'render S) -> Self {
+    pub fn new(
+        focused: bool,
+        layout: &'render Layout<U, S>,
+        widgets: &'render WidgetStore<U, S>,
+        state: &'render S,
+    ) -> Self {
         Self {
             focused,
             layout,
+            widgets,
             state,
         }
+    }
+
+    pub fn get_widget(&self, id: WidgetId) -> Option<&'render dyn Widget<U, S>> {
+        self.widgets.get(id)
+    }
+
+    pub fn resolve<T: Widget<U, S> + 'static>(&self, id: WidgetId) -> Option<&T> {
+        self.widgets.resolve(id)
     }
 }
 
@@ -46,34 +64,51 @@ impl<'update, U, S> UpdateCtx<'update, U, S> {
         Self {
             owner,
             bounds,
-            widgets,
+            widgets: unsafe { NonNull::new_unchecked(widgets) },
             layout,
             tx,
             state,
         }
     }
 
-    pub fn get_widget<'a>(&self, id: WidgetId) -> Option<&'a dyn Widget<U, S>> {
-        unsafe { (*self.widgets).get(id) }
+    /// Get a reference to a widget by its ID, as an immutable `dyn Widget` trait object.
+    pub fn get_widget(&self, id: WidgetId) -> Option<&'update dyn Widget<U, S>> {
+        unsafe { self.widgets.as_ref().get(id) }
     }
 
-    pub fn get_widget_mut<'a>(&mut self, id: WidgetId) -> Option<&'a mut dyn Widget<U, S>> {
-        unsafe { (*self.widgets).get_mut(id) }
+    /// Get a reference to a widget by its ID, as a mutable `dyn Widget` trait object.
+    pub fn get_widget_mut(&mut self, id: WidgetId) -> Option<&'update mut dyn Widget<U, S>> {
+        unsafe { self.widgets.as_mut().get_mut(id) }
     }
 
-    pub fn resolve<'a, T: Widget<U, S> + 'static>(&self, id: WidgetId) -> Option<&T> {
-        unsafe { (*self.widgets).resolve(id) }
+    /// Remove a widget from the widget store.
+    ///
+    /// Note that any references to the widget following this call are invalid.
+    pub fn remove_widget(&mut self, id: WidgetId) {
+        unsafe { self.widgets.as_mut().remove(id) };
     }
 
-    pub fn resolve_mut<'a, T: Widget<U, S> + 'static>(&mut self, id: WidgetId) -> Option<&mut T> {
-        unsafe { (*self.widgets).resolve_mut(id) }
+    /// Get an immutable reference to a widget by its ID, and attempt to downcast it to a concrete type.
+    pub fn resolve<W: Widget<U, S> + 'static>(&self, id: WidgetId) -> Option<&'update W> {
+        unsafe { self.widgets.as_ref().resolve::<W>(id) }
     }
 
+    /// Get a mutable reference to a widget by its ID, and attempt to downcast it to a concrete
+    /// type.
+    pub fn resolve_mut<W: Widget<U, S> + 'static>(
+        &mut self,
+        id: WidgetId,
+    ) -> Option<&'update mut W> {
+        unsafe { self.widgets.as_mut().resolve_mut::<W>(id) }
+    }
+
+    /// Register a new widget with the widget store.
     pub fn register_widget(&mut self, widget: impl Widget<U, S> + 'static) -> WidgetId {
-        unsafe { (*self.widgets).register(widget) }
+        unsafe { self.widgets.as_mut().register(widget) }
     }
 
-    pub fn with_rect<'u>(&'u mut self, rect: Rect) -> UpdateCtx<'u, U, S> {
+    /// Create a new [`UpdateCtx`] with different bounds, intended for rendering inner widgets.
+    pub fn with_rect<'inner>(&'inner mut self, rect: Rect) -> UpdateCtx<'inner, U, S> {
         UpdateCtx {
             owner: self.owner,
             bounds: rect,
@@ -117,7 +152,29 @@ pub trait Widget<U, S> {
         Constraint::Fill
     }
 
+    /// Convert the widget into an immutable [`std::any::Any`] trait object, for use when resolving
+    /// widgets to concrete types. This should usually return `self`. They are required to be
+    /// implemented by each widget because a ref'd concrete type (&Self) implementing widget can be cast to &dyn Any,
+    /// but trait objects such as &dyn Widget cannot.
+    ///
+    /// ```rust
+    /// fn as_any(&self) -> &dyn std::any::Any {
+    ///		self
+    /// }
+    /// ```
+    ///
     fn as_any(&self) -> &dyn std::any::Any;
 
+    /// Convert the widget into a mutable [`std::any::Any`] trait object, for use when resolving
+    /// widgets to concrete types. This should usually return `self`. They are required to be
+    /// implemented by each widget because a ref'd concrete type (&Self) implementing widget can be cast to &dyn Any,
+    /// but trait objects such as &dyn Widget cannot.
+    ///
+    /// ```rust
+    /// fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+    ///		self
+    /// }
+    /// ```
+    ///
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
