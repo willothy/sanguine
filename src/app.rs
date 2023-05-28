@@ -68,15 +68,14 @@ impl<U, S> WidgetStore<U, S> {
     }
 
     pub fn get(&self, id: WidgetId) -> Option<&dyn Widget<U, S>> {
-        self.widgets
-            .get(id)
-            .map(|v| unsafe { (v.as_ref() as *const dyn Widget<U, S>).as_ref() })
-            .flatten()
+        self.widgets.get(id).map(|v| v.as_ref())
     }
 
     pub fn get_mut(&mut self, id: WidgetId) -> Option<&mut dyn Widget<U, S>> {
         self.widgets
             .get_mut(id)
+            // Safety: The pointer will be valid for as long as the WidgetStore is alive, and the
+            // WidgetStore lives for the whole lifetime of the app.
             .map(|v| unsafe { (v.as_mut() as *mut dyn Widget<U, S>).as_mut() })
             .flatten()
     }
