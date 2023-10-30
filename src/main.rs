@@ -5,13 +5,13 @@ use dashmap::DashMap;
 use std::task::Poll;
 use taffy::{
     prelude::{Node, Size},
-    style::{AvailableSpace, FlexDirection, Style},
+    style::{AvailableSpace, Display, FlexDirection, Position, Style},
     tree::LayoutTree,
     Taffy,
 };
 use termwiz::{
     input::InputEvent,
-    surface::{Change, Position, Surface},
+    surface::{Change, Surface},
     terminal::{buffered::BufferedTerminal, new_terminal, Terminal},
 };
 use tokio::{
@@ -124,15 +124,15 @@ pub struct WindowManager<T: Terminal> {
 pub enum SplitDirection {
     Left,
     Right,
-    Up,
-    Down,
+    Above,
+    Below,
 }
 
 impl SplitDirection {
     pub fn axis(&self) -> LayoutAxis {
         match self {
             SplitDirection::Left | SplitDirection::Right => LayoutAxis::Row,
-            SplitDirection::Up | SplitDirection::Down => LayoutAxis::Col,
+            SplitDirection::Above | SplitDirection::Below => LayoutAxis::Col,
         }
     }
 }
@@ -143,7 +143,8 @@ impl<T: Terminal> WindowManager<T> {
         let windows = DashMap::new();
         let buffer = Buffer::test();
         let node = layout.new_leaf(Style {
-            size: Size::from_percent(1.0, 1.0),
+            size: Size::percent(1.),
+            position: Position::Relative,
             ..Default::default()
         })?;
         windows.insert(
@@ -158,7 +159,10 @@ impl<T: Terminal> WindowManager<T> {
 
         let root = layout.new_with_children(
             Style {
-                size: Size::from_percent(1.0, 1.0),
+                // size: Size::from_percent(1.0, 1.0),
+                size: Size::percent(1.),
+                position: Position::Relative,
+                display: Display::Flex,
                 ..Default::default()
             },
             &[node],
@@ -207,8 +211,12 @@ impl<T: Terminal> WindowManager<T> {
         }
     }
 
-    pub fn split(&mut self, handle: Node, direction: SplitDirection) -> Result<Node> {
-        let buffer = self.create_buffer();
+    pub fn split(
+        &mut self,
+        handle: Node,
+        direction: SplitDirection,
+        buffer: Option<BufferHandle>,
+    ) -> Result<Node> {
         let window = self
             .windows
             .get(&handle)
@@ -224,8 +232,8 @@ impl<T: Terminal> WindowManager<T> {
         let (axis, before) = match direction {
             SplitDirection::Left => (FlexDirection::Row, true),
             SplitDirection::Right => (FlexDirection::Row, false),
-            SplitDirection::Up => (FlexDirection::Column, true),
-            SplitDirection::Down => (FlexDirection::Column, false),
+            SplitDirection::Above => (FlexDirection::Column, true),
+            SplitDirection::Below => (FlexDirection::Column, false),
         };
         if parent_axis != direction.axis() {
             if self.layout.child_count(parent)? == 1 {
@@ -240,19 +248,22 @@ impl<T: Terminal> WindowManager<T> {
             } else {
                 let new_leaf = self.layout.new_leaf(Style {
                     size: Size::from_percent(1., 1.),
+                    position: Position::Relative,
                     ..Default::default()
                 })?;
                 let new_win = Window {
                     surface: Surface::new(1, 1),
                     handle: new_leaf,
                     topline: 0,
-                    buffer,
+                    buffer: buffer.unwrap_or(window.buffer),
                 };
                 self.windows.insert(new_leaf, new_win);
                 let new_frame = self.layout.new_with_children(
                     Style {
-                        size: Size::from_percent(1., 1.),
+                        size: Size::from_percent(1.0, 1.0),
+                        display: Display::Flex,
                         flex_direction: axis,
+                        position: Position::Relative,
                         ..Default::default()
                     },
                     &if before {
@@ -261,21 +272,26 @@ impl<T: Terminal> WindowManager<T> {
                         [handle, new_leaf]
                     },
                 )?;
-                self.layout
-                    .replace_child_at_index(parent, handle_idx, new_frame)?;
+                if handle_idx == self.layout.child_count(parent)? - 1 {
+                    self.layout.add_child(parent, new_frame)?;
+                } else {
+                    self.layout
+                        .replace_child_at_index(parent, handle_idx, new_frame)?;
+                }
                 return Ok(new_leaf);
             }
         }
 
         let new_node = self.layout.new_leaf(Style {
             size: Size::from_percent(1., 1.),
+            position: Position::Relative,
             ..Default::default()
         })?;
         let new_win = Window {
             surface: Surface::new(1, 1),
             handle: new_node,
             topline: 0,
-            buffer,
+            buffer: buffer.unwrap_or(window.buffer),
         };
         self.windows.insert(new_node, new_win);
 
@@ -295,9 +311,11 @@ impl<T: Terminal> WindowManager<T> {
     }
 
     pub fn render(&mut self) -> Result<()> {
+        use termwiz::surface::Position;
         self.recompute_layout()?;
 
         let surface = &mut self.terminal;
+        surface.add_change(Change::ClearScreen(termwiz::color::ColorAttribute::Default));
 
         let mut stack = vec![self.root];
         loop {
@@ -335,7 +353,7 @@ impl<T: Terminal> WindowManager<T> {
             for (i, line) in buffer.lines().enumerate() {
                 win.surface.add_changes(vec![
                     Change::CursorPosition {
-                        x: Position::Absolute(2),
+                        x: termwiz::surface::Position::Absolute(2),
                         y: Position::Absolute(i + 1),
                     },
                     Change::Text(
@@ -358,6 +376,22 @@ impl<T: Terminal> WindowManager<T> {
 
         Ok(())
     }
+
+    pub fn print_layout(&self) {
+        let mut stack = vec![self.root];
+        loop {
+            let node = match stack.pop() {
+                Some(node) if self.layout.is_childless(node) => node,
+                Some(node) => {
+                    stack.extend(self.layout.children(node).unwrap().iter().rev());
+                    continue;
+                }
+                None => break,
+            };
+            let dims = self.layout.layout(node).unwrap();
+            println!("{:?}: {:?}", node, dims);
+        }
+    }
 }
 
 pub trait DrawBorder {
@@ -373,6 +407,7 @@ pub trait DrawBorder {
 
 impl DrawBorder for Surface {
     fn draw_border(&mut self) {
+        use termwiz::surface::Position;
         let (w, h) = self.dimensions();
 
         let horz = std::iter::repeat(Self::HORIZONTAL)
@@ -467,16 +502,124 @@ where
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // let mut wm = WindowManager::new(term)?;
+    // wm.render()?;
+    // let buf = wm.create_buffer();
+    // std::thread::sleep(std::time::Duration::from_secs(1));
+    // wm.split(
+    //     wm.layout.child_at_index(wm.root, 0)?,
+    //     SplitDirection::Right,
+    //     Some(buf),
+    // )?;
+    // wm.render()?;
+    // std::thread::sleep(std::time::Duration::from_secs(1));
+    // let win = wm.split(
+    //     wm.layout.child_at_index(wm.root, 1)?,
+    //     SplitDirection::Above,
+    //     Some(buf),
+    // )?;
+    // wm.render()?;
+    // let input = stdin().read_u8().await?;
+    // // let input = buffered.terminal().poll_input_async().await?;
+    // // println!("Got input {:?}", input);
+    // wm.print_layout();
+    let mut taffy = Taffy::new();
+
+    let window1 = taffy.new_leaf(Style {
+        size: Size::percent(1.),
+        position: Position::Relative,
+        ..Default::default()
+    })?;
+
+    let window2 = taffy.new_leaf(Style {
+        size: Size::percent(1.),
+        position: Position::Relative,
+        ..Default::default()
+    })?;
+
+    let window3 = taffy.new_leaf(Style {
+        size: Size::percent(1.),
+        position: Position::Relative,
+        ..Default::default()
+    })?;
+
+    let container1 = taffy.new_with_children(
+        Style {
+            size: Size::percent(1.),
+            position: Position::Relative,
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            ..Default::default()
+        },
+        &[window1, window2],
+    )?;
+
+    let container2 = taffy.new_with_children(
+        Style {
+            size: Size::percent(1.),
+            position: Position::Relative,
+            display: Display::Flex,
+            flex_direction: FlexDirection::Row,
+            ..Default::default()
+        },
+        &[container1, window3],
+    )?;
+
+    taffy.compute_layout(
+        container2,
+        Size {
+            width: AvailableSpace::Definite(180.),
+            height: AvailableSpace::Definite(80.),
+        },
+    )?;
+
+    println!("win3: {:#?}", taffy.layout(window1)?);
+    println!("win3: {:#?}", taffy.layout(window2)?);
+    println!("win3: {:#?}", taffy.layout(window3)?);
+
+    println!("box1: [win1, win2]: {:#?}", taffy.layout(container1)?);
+    println!("box2: [box1, win3]: {:#?}", taffy.layout(container2)?);
+
     let caps = termwiz::caps::Capabilities::new_from_env()?;
     let mut term = new_terminal(caps)?;
     term.set_raw_mode()?;
     let mut wm = WindowManager::new(term)?;
+    wm.layout = taffy;
+    let buffer = wm.create_buffer();
+    wm.windows.insert(
+        window1,
+        Window {
+            surface: Surface::new(1, 1),
+            handle: window1,
+            topline: 0,
+            buffer,
+        },
+    );
+    wm.windows.insert(
+        window2,
+        Window {
+            surface: Surface::new(1, 1),
+            handle: window2,
+            topline: 0,
+            buffer,
+        },
+    );
+    wm.windows.insert(
+        window3,
+        Window {
+            surface: Surface::new(1, 1),
+            handle: window3,
+            topline: 0,
+            buffer,
+        },
+    );
+    wm.root = container2;
+
+    wm.layout.mark_dirty(wm.root)?;
+
     wm.render()?;
-    wm.split(wm.layout.child_at_index(wm.root, 0)?, SplitDirection::Right)?;
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    wm.render()?;
+
     let input = stdin().read_u8().await?;
-    // let input = buffered.terminal().poll_input_async().await?;
-    println!("Got input {:?}", input);
+
     Ok(())
 }
