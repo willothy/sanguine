@@ -604,13 +604,15 @@ impl<T: Terminal> WindowManager<T> {
 
         let current = root.unwrap_or(self.root);
         if self.layout.is_childless(current) {
+            let floating = self.floating.contains(&current);
             println!(
-                "{:indent$}{:?} : {:?} {}\r",
+                "{:indent$}{:?} : {:?} {} {}\r",
                 "",
                 current,
                 self.layout.layout(current).unwrap(),
                 self.windows.contains_key(&current),
-                indent = self.depth(current) * 2
+                floating.then(|| "floating").unwrap_or(""),
+                indent = self.depth(current) * 2 * (!floating as usize)
             );
             return;
         }
