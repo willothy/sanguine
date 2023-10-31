@@ -1,10 +1,11 @@
 use std::{future::Future, task, time::Duration};
 
 use anyhow::{anyhow, Result};
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use std::task::Poll;
 use taffy::{
-    prelude::{Node, Size},
+    geometry::Point,
+    prelude::{Layout, Node, Size},
     style::{AvailableSpace, Display, FlexDirection, Position, Style},
     tree::LayoutTree,
     Taffy,
@@ -26,6 +27,28 @@ fn next_buffer_handle() -> BufferHandle {
         let handle = NEXT_BUFFER_HANDLE;
         NEXT_BUFFER_HANDLE += 1;
         handle
+    }
+}
+
+pub trait AsDimensions {
+    fn as_dimensions(&self) -> (usize, usize);
+}
+
+impl AsDimensions for Size<f32> {
+    fn as_dimensions(&self) -> (usize, usize) {
+        (self.width.round() as usize, self.height.round() as usize)
+    }
+}
+
+impl AsDimensions for Layout {
+    fn as_dimensions(&self) -> (usize, usize) {
+        self.size.as_dimensions()
+    }
+}
+
+impl AsDimensions for Point<f32> {
+    fn as_dimensions(&self) -> (usize, usize) {
+        (self.x.round() as usize, self.y.round() as usize)
     }
 }
 
@@ -137,7 +160,7 @@ pub struct WindowManager<T: Terminal> {
     pub layout: Taffy,
     pub windows: DashMap<Node, Window>,
     pub buffers: DashMap<BufferHandle, Buffer>,
-    pub floating: Vec<Node>,
+    pub floating: DashSet<Node>,
     pub terminal: BufferedTerminal<T>,
 }
 
@@ -222,7 +245,7 @@ impl<T: Terminal> WindowManager<T> {
             layout,
             windows,
             buffers,
-            floating: Vec::new(),
+            floating: DashSet::new(),
             terminal: BufferedTerminal::new(terminal)?,
         })
     }
@@ -322,6 +345,19 @@ impl<T: Terminal> WindowManager<T> {
         Ok(())
     }
 
+    pub fn close_window(&mut self, window: Node) -> Result<()> {
+        if self.windows.contains_key(&window) {
+            self.windows.remove(&window);
+            if let None = self.floating.remove(&window) {
+                let parent = self.layout.parent(window).expect("Window has no parent");
+                self.layout.remove(window)?;
+                self.layout.mark_dirty(parent)?;
+            }
+            return Ok(());
+        }
+        Err(anyhow!("Invalid window {window:?}"))
+    }
+
     pub fn win_get_buffer(&self, window: Node) -> Result<BufferHandle> {
         if let Some(win) = self.windows.get(&window) {
             return Ok(win.buffer);
@@ -401,7 +437,6 @@ impl<T: Terminal> WindowManager<T> {
         self.recompute_layout()?;
 
         let surface = &mut self.terminal;
-        surface.add_change(Change::ClearScreen(termwiz::color::ColorAttribute::Default));
 
         let mut stack = vec![self.root];
         loop {
@@ -417,17 +452,19 @@ impl<T: Terminal> WindowManager<T> {
             let Some(mut win) = self.windows.get_mut(&node) else {
                 continue;
             };
-            let (width, height) = (
-                dims.size.width.round() as usize,
-                dims.size.height.round() as usize,
-            );
-            win.surface.resize(width, height);
+            let (width, height) = dims.size.as_dimensions();
+            if win.surface.dimensions() != (width, height) {
+                win.surface.resize(width, height);
+            }
+            win.surface
+                .add_change(Change::ClearScreen(termwiz::color::ColorAttribute::Default));
             win.surface.draw_border();
             let buffer = self
                 .buffers
                 .get(&win.buffer)
                 .ok_or_else(|| anyhow!("Invalid buffer handle {}", win.buffer))?;
 
+            // FIXME: This likely will not work properly for wide characters or escape sequences.
             let buffer = &buffer.inner.line_slice(
                 win.topline
                     ..(win.topline + height)
@@ -455,22 +492,21 @@ impl<T: Terminal> WindowManager<T> {
             // to translate them to screen space.
             // If there's no parent, we're a root window and can draw directly to the screen
             // without translation.
-            let parent_dims = self
+            let (parent_x, parent_y) = self
                 .layout
                 .parent(node)
-                .and_then(|p| {
+                .and_then(|parent| {
                     self.layout
-                        .layout(p)
-                        .map(|l| (l.location.x.round() as usize, l.location.y.round() as usize))
+                        .layout(parent)
+                        .map(|dims| dims.location.as_dimensions())
                         .ok()
                 })
-                .unwrap_or_else(|| (0, 0));
+                .unwrap_or((0, 0));
+            let (local_x, local_y) = dims.location.as_dimensions();
+            let translated_x = parent_x + local_x;
+            let translated_y = parent_y + local_y;
 
-            surface.draw_from_screen(
-                &win.surface,
-                parent_dims.0 + dims.location.x.round() as usize,
-                parent_dims.1 + dims.location.y.round() as usize,
-            );
+            surface.draw_from_screen(&win.surface, translated_x, translated_y);
         }
 
         surface.flush()?;
@@ -685,11 +721,14 @@ async fn main() -> Result<()> {
     )?;
     wm.render()?;
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let _win = wm.split(
+    let win3 = wm.split(
         wm.layout.child_at_index(wm.root, 1)?,
         SplitDirection::Above,
         Some(buf),
     )?;
+    wm.render()?;
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    wm.close_window(win3)?;
     wm.render()?;
     let _ = stdin().read_u8().await?;
     println!("\n\r");
