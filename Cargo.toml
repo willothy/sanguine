@@ -18,5 +18,5 @@ dashmap = "5.5.3"
 slotmap = "1.0.6"
 taffy = "0.3.17"
 termwiz = "0.20.0"
-thiserror = "1.0.40"
+thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["full", "signal"] }

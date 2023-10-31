@@ -35,6 +35,26 @@ pub enum LayoutAxis {
     Col,
 }
 
+impl From<FlexDirection> for LayoutAxis {
+    fn from(value: FlexDirection) -> Self {
+        match value {
+            FlexDirection::Row => Self::Row,
+            FlexDirection::Column => Self::Col,
+            FlexDirection::RowReverse => Self::Row,
+            FlexDirection::ColumnReverse => Self::Col,
+        }
+    }
+}
+
+impl std::fmt::Display for LayoutAxis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LayoutAxis::Row => write!(f, "row"),
+            LayoutAxis::Col => write!(f, "col"),
+        }
+    }
+}
+
 pub enum Frame {
     Leaf {
         node: Node,
@@ -135,6 +155,32 @@ impl SplitDirection {
             SplitDirection::Above | SplitDirection::Below => LayoutAxis::Col,
         }
     }
+
+    pub fn is_before(&self) -> bool {
+        match self {
+            SplitDirection::Left | SplitDirection::Above => true,
+            SplitDirection::Right | SplitDirection::Below => false,
+        }
+    }
+}
+
+impl Into<FlexDirection> for SplitDirection {
+    fn into(self) -> FlexDirection {
+        use SplitDirection::*;
+        match self {
+            Left | Right => FlexDirection::Row,
+            Above | Below => FlexDirection::Column,
+        }
+    }
+}
+
+impl Into<FlexDirection> for LayoutAxis {
+    fn into(self) -> FlexDirection {
+        match self {
+            LayoutAxis::Row => FlexDirection::Row,
+            LayoutAxis::Col => FlexDirection::Column,
+        }
+    }
 }
 
 impl<T: Terminal> WindowManager<T> {
@@ -159,10 +205,10 @@ impl<T: Terminal> WindowManager<T> {
 
         let root = layout.new_with_children(
             Style {
-                // size: Size::from_percent(1.0, 1.0),
                 size: Size::percent(1.),
                 position: Position::Relative,
                 display: Display::Flex,
+                flex_direction: FlexDirection::Row,
                 ..Default::default()
             },
             &[node],
@@ -181,11 +227,32 @@ impl<T: Terminal> WindowManager<T> {
         })
     }
 
-    pub fn create_buffer(&mut self) -> BufferHandle {
+    pub fn create_buffer(&self) -> BufferHandle {
         let buffer = Buffer::new();
         let id = buffer.id;
         self.buffers.insert(id, buffer);
         id
+    }
+
+    pub fn delete_buffer(&mut self, buffer: BufferHandle) -> Result<()> {
+        if self.buffers.contains_key(&buffer) {
+            let tmp_buf = self
+                .buffers
+                .iter()
+                .find(|e| e.id != buffer)
+                .map(|e| e.id)
+                .unwrap_or_else(|| self.create_buffer());
+            let mut used_tmp = false;
+            self.windows.iter_mut().for_each(|mut win| {
+                if win.buffer == buffer {
+                    win.buffer = tmp_buf;
+                    used_tmp = true;
+                }
+            });
+            self.buffers.remove(&buffer);
+            return Ok(());
+        }
+        Err(anyhow!("Invalid buffer handle {}", buffer))
     }
 
     pub fn recompute_layout(&mut self) -> Result<()> {
@@ -200,15 +267,77 @@ impl<T: Terminal> WindowManager<T> {
         Ok(())
     }
 
-    pub fn frame_axis(&self, node: Node) -> Option<LayoutAxis> {
+    pub fn frame_axis(&self, frame: Node) -> Option<LayoutAxis> {
         use taffy::style::FlexDirection::*;
-        if self.layout.is_childless(node) {
+        if self.layout.is_childless(frame) {
             return None;
         }
-        match self.layout.style(node).ok()?.flex_direction {
+        match self.layout.style(frame).ok()?.flex_direction {
             Row | RowReverse => Some(LayoutAxis::Row),
             Column | ColumnReverse => Some(LayoutAxis::Col),
         }
+    }
+
+    fn create_frame(
+        &mut self,
+        direction: FlexDirection,
+        children: impl AsRef<[Node]>,
+    ) -> Result<Node> {
+        self.layout
+            .new_with_children(
+                Style {
+                    size: Size::percent(1.),
+                    position: Position::Relative,
+                    display: Display::Flex,
+                    flex_direction: direction,
+                    ..Default::default()
+                },
+                children.as_ref(),
+            )
+            .map_err(|e| anyhow!("{e}"))
+    }
+
+    fn create_window(&mut self, buffer: BufferHandle) -> Result<Node> {
+        let node = self.layout.new_leaf(Style {
+            size: Size::percent(1.),
+            position: Position::Relative,
+            ..Default::default()
+        })?;
+        self.windows.insert(
+            node,
+            Window {
+                surface: Surface::new(1, 1),
+                handle: node,
+                topline: 0,
+                buffer,
+            },
+        );
+        Ok(node)
+    }
+
+    fn update_style(&mut self, node: Node, f: impl FnOnce(&mut Style)) -> Result<()> {
+        let mut style = self.layout.style(node)?.clone();
+        f(&mut style);
+        self.layout.set_style(node, style)?;
+        Ok(())
+    }
+
+    pub fn win_get_buffer(&self, window: Node) -> Result<BufferHandle> {
+        if let Some(win) = self.windows.get(&window) {
+            return Ok(win.buffer);
+        }
+        return Err(anyhow!("Invalid window {window:?}"));
+    }
+
+    pub fn win_set_buffer(&mut self, window: Node, buffer: BufferHandle) -> Result<()> {
+        if !self.buffers.contains_key(&buffer) {
+            return Err(anyhow!("Invalid buffer handle {}", buffer));
+        }
+        if let Some(mut win) = self.windows.get_mut(&window) {
+            win.buffer = buffer;
+            return Ok(());
+        }
+        return Err(anyhow!("Invalid window {window:?}"));
     }
 
     pub fn split(
@@ -217,97 +346,54 @@ impl<T: Terminal> WindowManager<T> {
         direction: SplitDirection,
         buffer: Option<BufferHandle>,
     ) -> Result<Node> {
-        let window = self
-            .windows
-            .get(&handle)
-            .ok_or_else(|| anyhow!("Invalid window {handle:?}"))?;
         let parent = self.layout.parent(handle).unwrap();
-        let handle_idx = self
-            .layout
-            .children(parent)?
-            .iter()
-            .position(|n| *n == handle)
-            .unwrap();
+        let handle_idx = self.layout.child_index(handle).unwrap();
         let parent_axis = self.frame_axis(parent).unwrap();
-        let (axis, before) = match direction {
-            SplitDirection::Left => (FlexDirection::Row, true),
-            SplitDirection::Right => (FlexDirection::Row, false),
-            SplitDirection::Above => (FlexDirection::Column, true),
-            SplitDirection::Below => (FlexDirection::Column, false),
-        };
-        if parent_axis != direction.axis() {
+        let axis = direction.axis();
+        if parent_axis != axis {
             if self.layout.child_count(parent)? == 1 {
-                let mut style = self.layout.style(parent).unwrap().to_owned();
-                style.flex_direction = match style.flex_direction {
-                    FlexDirection::Row => FlexDirection::Column,
-                    FlexDirection::Column => FlexDirection::Row,
-                    FlexDirection::RowReverse => FlexDirection::ColumnReverse,
-                    FlexDirection::ColumnReverse => FlexDirection::RowReverse,
-                };
-                self.layout.set_style(parent, style)?;
-            } else {
-                let new_leaf = self.layout.new_leaf(Style {
-                    size: Size::from_percent(1., 1.),
-                    position: Position::Relative,
-                    ..Default::default()
+                self.update_style(parent, |style| {
+                    style.flex_direction = match style.flex_direction {
+                        FlexDirection::Row => FlexDirection::Column,
+                        FlexDirection::Column => FlexDirection::Row,
+                        FlexDirection::RowReverse => FlexDirection::ColumnReverse,
+                        FlexDirection::ColumnReverse => FlexDirection::RowReverse,
+                    };
                 })?;
-                let new_win = Window {
-                    surface: Surface::new(1, 1),
-                    handle: new_leaf,
-                    topline: 0,
-                    buffer: buffer.unwrap_or(window.buffer),
-                };
-                self.windows.insert(new_leaf, new_win);
-                let new_frame = self.layout.new_with_children(
-                    Style {
-                        size: Size::from_percent(1.0, 1.0),
-                        display: Display::Flex,
-                        flex_direction: axis,
-                        position: Position::Relative,
-                        ..Default::default()
-                    },
-                    &if before {
+            } else {
+                let new_leaf =
+                    self.create_window(buffer.unwrap_or(self.win_get_buffer(handle)?))?;
+                let new_frame = self.create_frame(axis.into(), [])?;
+                self.layout
+                    .replace_child_at_index(parent, handle_idx, new_frame)?;
+                self.layout.set_children(
+                    new_frame,
+                    &if direction.is_before() {
                         [new_leaf, handle]
                     } else {
                         [handle, new_leaf]
                     },
                 )?;
-                if handle_idx == self.layout.child_count(parent)? - 1 {
-                    self.layout.add_child(parent, new_frame)?;
-                } else {
-                    self.layout
-                        .replace_child_at_index(parent, handle_idx, new_frame)?;
-                }
                 return Ok(new_leaf);
             }
         }
 
-        let new_node = self.layout.new_leaf(Style {
-            size: Size::from_percent(1., 1.),
-            position: Position::Relative,
-            ..Default::default()
-        })?;
-        let new_win = Window {
-            surface: Surface::new(1, 1),
-            handle: new_node,
-            topline: 0,
-            buffer: buffer.unwrap_or(window.buffer),
-        };
-        self.windows.insert(new_node, new_win);
+        let new_win =
+            self.create_window(buffer.unwrap_or_else(|| self.win_get_buffer(handle).unwrap()))?;
 
         let mut children = self.layout.children(parent)?;
-        if before {
-            children.insert(handle_idx, new_node);
+        if direction.is_before() {
+            children.insert(handle_idx, new_win);
         } else {
             if handle_idx == children.len() - 1 {
-                children.push(new_node);
+                children.push(new_win);
             } else {
-                children.insert(handle_idx + 1, new_node);
+                children.insert(handle_idx + 1, new_win);
             }
         }
         self.layout.set_children(parent, &children)?;
 
-        Ok(new_node)
+        Ok(new_win)
     }
 
     pub fn render(&mut self) -> Result<()> {
@@ -331,11 +417,11 @@ impl<T: Terminal> WindowManager<T> {
             let Some(mut win) = self.windows.get_mut(&node) else {
                 continue;
             };
-            let win_dims = (
+            let (width, height) = (
                 dims.size.width.round() as usize,
                 dims.size.height.round() as usize,
             );
-            win.surface.resize(win_dims.0, win_dims.1);
+            win.surface.resize(width, height);
             win.surface.draw_border();
             let buffer = self
                 .buffers
@@ -344,7 +430,7 @@ impl<T: Terminal> WindowManager<T> {
 
             let buffer = &buffer.inner.line_slice(
                 win.topline
-                    ..(win.topline + win_dims.1)
+                    ..(win.topline + height)
                         .saturating_sub(2)
                         .max(win.topline)
                         .min(buffer.inner.line_len()),
@@ -359,16 +445,31 @@ impl<T: Terminal> WindowManager<T> {
                     Change::Text(
                         line.chars()
                             .skip_while(|c| c.is_whitespace())
-                            .take(win_dims.0 - 2)
+                            .take(width - 2)
                             .collect::<String>(),
                     ),
                 ]);
             }
 
+            // Dimensions are in the parent's local space, so we need to add the parent's location
+            // to translate them to screen space.
+            // If there's no parent, we're a root window and can draw directly to the screen
+            // without translation.
+            let parent_dims = self
+                .layout
+                .parent(node)
+                .and_then(|p| {
+                    self.layout
+                        .layout(p)
+                        .map(|l| (l.location.x.round() as usize, l.location.y.round() as usize))
+                        .ok()
+                })
+                .unwrap_or_else(|| (0, 0));
+
             surface.draw_from_screen(
                 &win.surface,
-                dims.location.x.round() as usize,
-                dims.location.y.round() as usize,
+                parent_dims.0 + dims.location.x.round() as usize,
+                parent_dims.1 + dims.location.y.round() as usize,
             );
         }
 
@@ -377,19 +478,74 @@ impl<T: Terminal> WindowManager<T> {
         Ok(())
     }
 
-    pub fn print_layout(&self) {
-        let mut stack = vec![self.root];
-        loop {
-            let node = match stack.pop() {
-                Some(node) if self.layout.is_childless(node) => node,
-                Some(node) => {
-                    stack.extend(self.layout.children(node).unwrap().iter().rev());
-                    continue;
+    pub fn depth(&self, node: Node) -> usize {
+        let mut depth = 0;
+        let mut current = node;
+        while let Some(parent) = self.layout.parent(current) {
+            current = parent;
+            depth += 1;
+        }
+        depth
+    }
+
+    pub fn windows(&self) -> impl Iterator<Item = Node> + '_ {
+        struct Windows<'b> {
+            inner: std::collections::VecDeque<Node>,
+            layout: &'b Taffy,
+        }
+        impl<'b> Iterator for Windows<'b> {
+            type Item = Node;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                match self.inner.pop_front() {
+                    Some(node) => {
+                        if self.layout.is_childless(node) {
+                            return Some(node);
+                        }
+                        for child in self.layout.children(node).unwrap() {
+                            self.inner.push_back(child);
+                        }
+                        self.next()
+                    }
+                    None => None,
                 }
-                None => break,
-            };
-            let dims = self.layout.layout(node).unwrap();
-            println!("{:?}: {:?}", node, dims);
+            }
+        }
+        Windows {
+            inner: std::collections::VecDeque::from([self.root]),
+            layout: &self.layout,
+        }
+    }
+
+    pub fn print_layout(&self, root: Option<Node>, wins: &DashMap<Node, Window>) {
+        // print a tree structure of nodes
+
+        let current = root.unwrap_or(self.root);
+        if self.layout.is_childless(current) {
+            println!(
+                "{:indent$}{:?} : {:?} {}\r",
+                "",
+                current,
+                self.layout.layout(current).unwrap(),
+                self.windows.contains_key(&current),
+                indent = self.depth(current) * 2
+            );
+            return;
+        }
+
+        println!(
+            "{:indent$}{:?} : {} : {:?}\r",
+            "",
+            current,
+            LayoutAxis::from(self.layout.style(current).unwrap().flex_direction),
+            self.layout.layout(current).unwrap(),
+            indent = self.depth(current) * 2,
+        );
+
+        let children = self.layout.children(current).unwrap();
+
+        for child in children {
+            self.print_layout(Some(child), wins);
         }
     }
 }
@@ -500,126 +656,44 @@ where
     }
 }
 
+pub trait ChildIndex {
+    fn child_index(&self, child: Node) -> Option<usize>;
+}
+
+impl ChildIndex for Taffy {
+    fn child_index(&self, child: Node) -> Option<usize> {
+        self.children(self.parent(child)?)
+            .ok()?
+            .iter()
+            .position(|n| *n == child)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    // let mut wm = WindowManager::new(term)?;
-    // wm.render()?;
-    // let buf = wm.create_buffer();
-    // std::thread::sleep(std::time::Duration::from_secs(1));
-    // wm.split(
-    //     wm.layout.child_at_index(wm.root, 0)?,
-    //     SplitDirection::Right,
-    //     Some(buf),
-    // )?;
-    // wm.render()?;
-    // std::thread::sleep(std::time::Duration::from_secs(1));
-    // let win = wm.split(
-    //     wm.layout.child_at_index(wm.root, 1)?,
-    //     SplitDirection::Above,
-    //     Some(buf),
-    // )?;
-    // wm.render()?;
-    // let input = stdin().read_u8().await?;
-    // // let input = buffered.terminal().poll_input_async().await?;
-    // // println!("Got input {:?}", input);
-    // wm.print_layout();
-    let mut taffy = Taffy::new();
-
-    let window1 = taffy.new_leaf(Style {
-        size: Size::percent(1.),
-        position: Position::Relative,
-        ..Default::default()
-    })?;
-
-    let window2 = taffy.new_leaf(Style {
-        size: Size::percent(1.),
-        position: Position::Relative,
-        ..Default::default()
-    })?;
-
-    let window3 = taffy.new_leaf(Style {
-        size: Size::percent(1.),
-        position: Position::Relative,
-        ..Default::default()
-    })?;
-
-    let container1 = taffy.new_with_children(
-        Style {
-            size: Size::percent(1.),
-            position: Position::Relative,
-            display: Display::Flex,
-            flex_direction: FlexDirection::Column,
-            ..Default::default()
-        },
-        &[window1, window2],
-    )?;
-
-    let container2 = taffy.new_with_children(
-        Style {
-            size: Size::percent(1.),
-            position: Position::Relative,
-            display: Display::Flex,
-            flex_direction: FlexDirection::Row,
-            ..Default::default()
-        },
-        &[container1, window3],
-    )?;
-
-    taffy.compute_layout(
-        container2,
-        Size {
-            width: AvailableSpace::Definite(180.),
-            height: AvailableSpace::Definite(80.),
-        },
-    )?;
-
-    println!("win3: {:#?}", taffy.layout(window1)?);
-    println!("win3: {:#?}", taffy.layout(window2)?);
-    println!("win3: {:#?}", taffy.layout(window3)?);
-
-    println!("box1: [win1, win2]: {:#?}", taffy.layout(container1)?);
-    println!("box2: [box1, win3]: {:#?}", taffy.layout(container2)?);
-
     let caps = termwiz::caps::Capabilities::new_from_env()?;
     let mut term = new_terminal(caps)?;
     term.set_raw_mode()?;
     let mut wm = WindowManager::new(term)?;
-    wm.layout = taffy;
-    let buffer = wm.create_buffer();
-    wm.windows.insert(
-        window1,
-        Window {
-            surface: Surface::new(1, 1),
-            handle: window1,
-            topline: 0,
-            buffer,
-        },
-    );
-    wm.windows.insert(
-        window2,
-        Window {
-            surface: Surface::new(1, 1),
-            handle: window2,
-            topline: 0,
-            buffer,
-        },
-    );
-    wm.windows.insert(
-        window3,
-        Window {
-            surface: Surface::new(1, 1),
-            handle: window3,
-            topline: 0,
-            buffer,
-        },
-    );
-    wm.root = container2;
-
-    wm.layout.mark_dirty(wm.root)?;
-
     wm.render()?;
-
-    let input = stdin().read_u8().await?;
+    let buf = wm.create_buffer();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    wm.split(
+        wm.layout.child_at_index(wm.root, 0)?,
+        SplitDirection::Right,
+        Some(buf),
+    )?;
+    wm.render()?;
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let _win = wm.split(
+        wm.layout.child_at_index(wm.root, 1)?,
+        SplitDirection::Above,
+        Some(buf),
+    )?;
+    wm.render()?;
+    let _ = stdin().read_u8().await?;
+    println!("\n\r");
+    wm.print_layout(None, &wm.windows);
 
     Ok(())
 }
