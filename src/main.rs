@@ -5,8 +5,10 @@ use dashmap::{DashMap, DashSet};
 use std::task::Poll;
 use taffy::{
     geometry::Point,
-    prelude::{Layout, Node, Size},
-    style::{AvailableSpace, Display, FlexDirection, Position, Style},
+    prelude::{Layout, Node, Rect, Size},
+    style::{
+        AvailableSpace, Dimension, Display, FlexDirection, LengthPercentageAuto, Position, Style,
+    },
     tree::LayoutTree,
     Taffy,
 };
@@ -376,7 +378,36 @@ impl<T: Terminal> WindowManager<T> {
         return Err(anyhow!("Invalid window {window:?}"));
     }
 
-    pub fn split(
+    pub fn open_float(
+        &mut self,
+        buffer: Option<BufferHandle>,
+        position: Point<usize>,
+        size: Size<usize>,
+    ) -> Result<Node> {
+        let buffer = match buffer {
+            Some(buffer) => buffer,
+            None => self.create_buffer(),
+        };
+        let node = self.create_window(buffer)?;
+        self.floating.insert(node);
+        self.update_style(node, |style| {
+            style.position = Position::Absolute;
+            style.size = Size {
+                width: Dimension::Points(size.width as f32),
+                height: Dimension::Points(size.height as f32),
+            };
+            style.margin = Rect::<LengthPercentageAuto> {
+                left: LengthPercentageAuto::Points(position.x as f32),
+                right: LengthPercentageAuto::Auto,
+                top: LengthPercentageAuto::Points(position.y as f32),
+                bottom: LengthPercentageAuto::Auto,
+            };
+        })?;
+        self.layout.add_child(self.root, node)?;
+        Ok(node)
+    }
+
+    pub fn open_split(
         &mut self,
         handle: Node,
         direction: SplitDirection,
@@ -387,7 +418,7 @@ impl<T: Terminal> WindowManager<T> {
         let parent_axis = self.frame_axis(parent).unwrap();
         let axis = direction.axis();
         if parent_axis != axis {
-            if self.layout.child_count(parent)? == 1 {
+            if self.non_floating_child_count(parent)? == 1 {
                 self.update_style(parent, |style| {
                     style.flex_direction = match style.flex_direction {
                         FlexDirection::Row => FlexDirection::Column,
@@ -432,11 +463,52 @@ impl<T: Terminal> WindowManager<T> {
         Ok(new_win)
     }
 
-    pub fn render(&mut self) -> Result<()> {
-        use termwiz::surface::Position;
-        self.recompute_layout()?;
+    fn draw_win_view(&self, win: Node, width: usize, height: usize) -> Result<()> {
+        let mut win = self
+            .windows
+            .get_mut(&win)
+            .ok_or_else(|| anyhow!("Invalid window"))?;
+        if win.surface.dimensions() != (width, height) {
+            win.surface.resize(width, height);
+        }
+        win.surface
+            .add_change(Change::ClearScreen(termwiz::color::ColorAttribute::Default));
+        win.surface.draw_border();
+        let (width, height) = win.surface.dimensions();
+        let buffer = self
+            .buffers
+            .get(&win.buffer)
+            .ok_or_else(|| anyhow!("Invalid buffer {} for window", win.buffer))?;
 
-        let surface = &mut self.terminal;
+        // FIXME: This likely will not work properly for wide characters or escape sequences.
+        let view = &buffer.inner.line_slice(
+            win.topline
+                ..(win.topline + height)
+                    .saturating_sub(2)
+                    .max(win.topline)
+                    .min(buffer.inner.line_len()),
+        );
+
+        for (i, line) in view.lines().enumerate() {
+            win.surface.add_changes(vec![
+                Change::CursorPosition {
+                    x: termwiz::surface::Position::Absolute(2),
+                    y: termwiz::surface::Position::Absolute(i + 1),
+                },
+                Change::Text(
+                    line.chars()
+                        .skip_while(|c| c.is_whitespace())
+                        .take(width - 2)
+                        .collect::<String>(),
+                ),
+            ]);
+        }
+
+        Ok(())
+    }
+
+    pub fn render(&mut self) -> Result<()> {
+        self.recompute_layout()?;
 
         let mut stack = vec![self.root];
         loop {
@@ -448,68 +520,43 @@ impl<T: Terminal> WindowManager<T> {
                 }
                 None => break,
             };
-            let dims = self.layout.layout(node).map_err(|e| anyhow!("{e}"))?;
-            let Some(mut win) = self.windows.get_mut(&node) else {
-                continue;
-            };
+            let dims = *self.layout.layout(node).map_err(|e| anyhow!("{e}"))?;
+
             let (width, height) = dims.size.as_dimensions();
-            if win.surface.dimensions() != (width, height) {
-                win.surface.resize(width, height);
-            }
-            win.surface
-                .add_change(Change::ClearScreen(termwiz::color::ColorAttribute::Default));
-            win.surface.draw_border();
-            let buffer = self
-                .buffers
-                .get(&win.buffer)
-                .ok_or_else(|| anyhow!("Invalid buffer handle {}", win.buffer))?;
-
-            // FIXME: This likely will not work properly for wide characters or escape sequences.
-            let buffer = &buffer.inner.line_slice(
-                win.topline
-                    ..(win.topline + height)
-                        .saturating_sub(2)
-                        .max(win.topline)
-                        .min(buffer.inner.line_len()),
-            );
-
-            for (i, line) in buffer.lines().enumerate() {
-                win.surface.add_changes(vec![
-                    Change::CursorPosition {
-                        x: termwiz::surface::Position::Absolute(2),
-                        y: Position::Absolute(i + 1),
-                    },
-                    Change::Text(
-                        line.chars()
-                            .skip_while(|c| c.is_whitespace())
-                            .take(width - 2)
-                            .collect::<String>(),
-                    ),
-                ]);
-            }
+            self.draw_win_view(node, width, height)?;
 
             // Dimensions are in the parent's local space, so we need to add the parent's location
             // to translate them to screen space.
-            // If there's no parent, we're a root window and can draw directly to the screen
-            // without translation.
             let (parent_x, parent_y) = self
                 .layout
                 .parent(node)
-                .and_then(|parent| {
-                    self.layout
-                        .layout(parent)
-                        .map(|dims| dims.location.as_dimensions())
-                        .ok()
-                })
-                .unwrap_or((0, 0));
+                .and_then(|parent| Some(self.layout.layout(parent).ok()?.location.as_dimensions()))
+                .expect("Window has no parent");
             let (local_x, local_y) = dims.location.as_dimensions();
             let translated_x = parent_x + local_x;
             let translated_y = parent_y + local_y;
 
-            surface.draw_from_screen(&win.surface, translated_x, translated_y);
+            if let Some(win) = self.windows.get(&node) {
+                self.terminal
+                    .draw_from_screen(&win.surface, translated_x, translated_y);
+            }
         }
 
-        surface.flush()?;
+        // Unfortunate that we have to iterate twice, but borrow checker :(
+        let floating = self.floating.iter().map(|x| *x).collect::<Vec<_>>();
+        floating.into_iter().try_for_each(|win| {
+            let dims = *self.layout.layout(win)?;
+            let (width, height) = dims.size.as_dimensions();
+            self.draw_win_view(win, width, height)?;
+
+            if let Some(win) = self.windows.get(&win) {
+                let (x, y) = dims.location.as_dimensions();
+                self.terminal.draw_from_screen(&win.surface, x, y);
+            }
+            Result::<_, anyhow::Error>::Ok(())
+        })?;
+
+        self.terminal.flush()?;
 
         Ok(())
     }
@@ -524,33 +571,14 @@ impl<T: Terminal> WindowManager<T> {
         depth
     }
 
-    pub fn windows(&self) -> impl Iterator<Item = Node> + '_ {
-        struct Windows<'b> {
-            inner: std::collections::VecDeque<Node>,
-            layout: &'b Taffy,
-        }
-        impl<'b> Iterator for Windows<'b> {
-            type Item = Node;
-
-            fn next(&mut self) -> Option<Self::Item> {
-                match self.inner.pop_front() {
-                    Some(node) => {
-                        if self.layout.is_childless(node) {
-                            return Some(node);
-                        }
-                        for child in self.layout.children(node).unwrap() {
-                            self.inner.push_back(child);
-                        }
-                        self.next()
-                    }
-                    None => None,
-                }
+    pub fn non_floating_child_count(&self, frame: Node) -> Result<usize> {
+        let mut count = 0;
+        for child in self.layout.children(frame)? {
+            if !self.floating.contains(&child) {
+                count += 1;
             }
         }
-        Windows {
-            inner: std::collections::VecDeque::from([self.root]),
-            layout: &self.layout,
-        }
+        Ok(count)
     }
 
     pub fn print_layout(&self, root: Option<Node>, wins: &DashMap<Node, Window>) {
@@ -714,14 +742,14 @@ async fn main() -> Result<()> {
     wm.render()?;
     let buf = wm.create_buffer();
     std::thread::sleep(std::time::Duration::from_secs(1));
-    wm.split(
+    wm.open_split(
         wm.layout.child_at_index(wm.root, 0)?,
         SplitDirection::Right,
         Some(buf),
     )?;
     wm.render()?;
     std::thread::sleep(std::time::Duration::from_secs(1));
-    let win3 = wm.split(
+    let win3 = wm.open_split(
         wm.layout.child_at_index(wm.root, 1)?,
         SplitDirection::Above,
         Some(buf),
@@ -729,6 +757,16 @@ async fn main() -> Result<()> {
     wm.render()?;
     std::thread::sleep(std::time::Duration::from_secs(1));
     wm.close_window(win3)?;
+    wm.render()?;
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    wm.open_float(
+        Some(buf),
+        Point { x: 10, y: 2 },
+        Size {
+            width: 25,
+            height: 8,
+        },
+    )?;
     wm.render()?;
     let _ = stdin().read_u8().await?;
     println!("\n\r");
