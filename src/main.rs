@@ -2,13 +2,11 @@ use std::{future::Future, task, time::Duration};
 
 use anyhow::{anyhow, Result};
 use dashmap::{DashMap, DashSet};
+use geometry::{Layout, Point, Size};
 use std::task::Poll;
 use taffy::{
-    geometry::Point,
-    prelude::{Layout, Node, Rect, Size},
-    style::{
-        AvailableSpace, Dimension, Display, FlexDirection, LengthPercentageAuto, Position, Style,
-    },
+    prelude::Node,
+    style::{AvailableSpace, Display, FlexDirection, Position, Style},
     tree::LayoutTree,
     Taffy,
 };
@@ -22,37 +20,7 @@ use tokio::{
     time::interval,
 };
 
-static mut NEXT_BUFFER_HANDLE: usize = 0;
-
-fn next_buffer_handle() -> BufferHandle {
-    unsafe {
-        let handle = NEXT_BUFFER_HANDLE;
-        NEXT_BUFFER_HANDLE += 1;
-        handle
-    }
-}
-
-pub trait AsDimensions {
-    fn as_dimensions(&self) -> (usize, usize);
-}
-
-impl AsDimensions for Size<f32> {
-    fn as_dimensions(&self) -> (usize, usize) {
-        (self.width.round() as usize, self.height.round() as usize)
-    }
-}
-
-impl AsDimensions for Layout {
-    fn as_dimensions(&self) -> (usize, usize) {
-        self.size.as_dimensions()
-    }
-}
-
-impl AsDimensions for Point<f32> {
-    fn as_dimensions(&self) -> (usize, usize) {
-        (self.x.round() as usize, self.y.round() as usize)
-    }
-}
+pub mod geometry;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutAxis {
@@ -78,92 +46,6 @@ impl std::fmt::Display for LayoutAxis {
             LayoutAxis::Col => write!(f, "col"),
         }
     }
-}
-
-pub enum Frame {
-    Leaf {
-        node: Node,
-    },
-    Container {
-        layout: LayoutAxis,
-        children: Vec<Frame>,
-        node: Node,
-    },
-}
-
-impl Frame {
-    pub fn node(&self) -> Node {
-        match *self {
-            Frame::Leaf { node, .. } => node,
-            Frame::Container { node, .. } => node,
-        }
-    }
-}
-
-pub type BufferHandle = usize;
-
-pub struct Buffer {
-    // TODO: How should buffers be represented? A rope is likely not needed as most
-    // terminals will be fed line-by-line (negating most of the Rope's edit performance benefits).
-    // But maybe raw terminals would benefit from a rope if we're able to render individual changes
-    // to the buffer.
-    inner: crop::Rope,
-    id: BufferHandle,
-}
-
-impl Buffer {
-    pub fn new() -> Self {
-        let id = next_buffer_handle();
-        Self {
-            inner: crop::Rope::new(),
-            id,
-        }
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        let id = next_buffer_handle();
-        Self {
-            inner: crop::Rope::from(s),
-            id,
-        }
-    }
-
-    pub fn test() -> Self {
-        Self::from_str(
-            r#"Hello, world!
-            Hello, world1!
-            Hello, world2!
-            Hello, world!
-            Hello, world!
-            Hello, world!
-            Hello, world!
-            Hello, world5!
-            Hello, world6!
-            Hello, world!
-            Hello, world!
-            Hello, world7!
-            Hello, world8!
-            Hello, world!
-            Hello, world!
-            Hello, world!"#,
-        )
-    }
-}
-
-pub struct Window {
-    pub handle: Node,
-    surface: Surface,
-    buffer: BufferHandle,
-    topline: usize,
-}
-
-pub struct WindowManager<T: Terminal> {
-    pub root: Node,
-    pub layout: Taffy,
-    pub windows: DashMap<Node, Window>,
-    pub buffers: DashMap<BufferHandle, Buffer>,
-    pub floating: DashSet<Node>,
-    pub terminal: BufferedTerminal<T>,
 }
 
 pub enum SplitDirection {
@@ -208,13 +90,105 @@ impl Into<FlexDirection> for LayoutAxis {
     }
 }
 
+pub type BufferHandle = usize;
+
+static mut NEXT_BUFFER_HANDLE: BufferHandle = 0;
+
+fn next_buffer_handle() -> BufferHandle {
+    unsafe {
+        NEXT_BUFFER_HANDLE += 1;
+        NEXT_BUFFER_HANDLE
+    }
+}
+
+// TODO: Transition from buffers to a more general concept of a view that can be displayed in a
+// window. This should provide interfaces for handling input and events, rendering, etc.
+//
+// Buffers should be program-specific - Sanguine should not care about the consumer's
+// implementation of View internals.
+//
+// Notes:
+// Should views be referenced externally, or should they be owned by the WindowManager? If they
+// are owned by the WindowManager, then the WindowManager can handle the lifetime of the view and
+// ensure that it is properly cleaned up when the window is closed. If they are referenced
+// externally, then the WindowManager can be more lightweight, but views will likely need to be
+// reference counted to ensure that they are not dropped while still in use.
+//
+// If views are owned by the WindowManager, the interface will likely be more complex since
+// any view-specific methods will need to be exposed through the WindowManager via type-safe
+// handles.
+pub struct Buffer {
+    inner: crop::Rope,
+    id: BufferHandle,
+}
+
+impl<T> From<T> for Buffer
+where
+    T: AsRef<str>,
+{
+    fn from(value: T) -> Self {
+        let id = next_buffer_handle();
+        Self {
+            inner: crop::Rope::from(value.as_ref()),
+            id,
+        }
+    }
+}
+
+impl Buffer {
+    pub fn new() -> Self {
+        let id = next_buffer_handle();
+        Self {
+            inner: crop::Rope::new(),
+            id,
+        }
+    }
+
+    pub fn test() -> Self {
+        Self::from(
+            r#"Hello, world!
+            Hello, world1!
+            Hello, world2!
+            Hello, world!
+            Hello, world!
+            Hello, world!
+            Hello, world!
+            Hello, world5!
+            Hello, world6!
+            Hello, world!
+            Hello, world!
+            Hello, world7!
+            Hello, world8!
+            Hello, world!
+            Hello, world!
+            Hello, world!"#,
+        )
+    }
+}
+
+pub struct Window {
+    pub handle: Node,
+    surface: Surface,
+    buffer: BufferHandle,
+    topline: usize,
+}
+
+pub struct WindowManager<T: Terminal> {
+    pub root: Node,
+    pub layout: Taffy,
+    pub windows: DashMap<Node, Window>,
+    pub buffers: DashMap<BufferHandle, Buffer>,
+    pub floating: DashSet<Node>,
+    pub terminal: BufferedTerminal<T>,
+}
+
 impl<T: Terminal> WindowManager<T> {
     pub fn new(terminal: T) -> Result<Self> {
         let mut layout = Taffy::new();
         let windows = DashMap::new();
         let buffer = Buffer::test();
         let node = layout.new_leaf(Style {
-            size: Size::percent(1.),
+            size: taffy::prelude::Size::percent(1.),
             position: Position::Relative,
             ..Default::default()
         })?;
@@ -230,7 +204,7 @@ impl<T: Terminal> WindowManager<T> {
 
         let root = layout.new_with_children(
             Style {
-                size: Size::percent(1.),
+                size: taffy::prelude::Size::percent(1.),
                 position: Position::Relative,
                 display: Display::Flex,
                 flex_direction: FlexDirection::Row,
@@ -283,7 +257,7 @@ impl<T: Terminal> WindowManager<T> {
     pub fn recompute_layout(&mut self) -> Result<()> {
         if self.layout.dirty(self.root)? {
             let (width, height) = self.terminal.dimensions();
-            let size = Size {
+            let size = taffy::prelude::Size {
                 width: AvailableSpace::Definite(width as f32),
                 height: AvailableSpace::Definite(height as f32),
             };
@@ -311,7 +285,7 @@ impl<T: Terminal> WindowManager<T> {
         self.layout
             .new_with_children(
                 Style {
-                    size: Size::percent(1.),
+                    size: taffy::prelude::Size::percent(1.),
                     position: Position::Relative,
                     display: Display::Flex,
                     flex_direction: direction,
@@ -324,7 +298,7 @@ impl<T: Terminal> WindowManager<T> {
 
     fn create_window(&mut self, buffer: BufferHandle) -> Result<Node> {
         let node = self.layout.new_leaf(Style {
-            size: Size::percent(1.),
+            size: taffy::prelude::Size::percent(1.),
             position: Position::Relative,
             ..Default::default()
         })?;
@@ -381,28 +355,20 @@ impl<T: Terminal> WindowManager<T> {
     pub fn open_float(
         &mut self,
         buffer: Option<BufferHandle>,
-        position: Point<usize>,
-        size: Size<usize>,
+        position: Point,
+        size: Size,
     ) -> Result<Node> {
         let buffer = match buffer {
             Some(buffer) => buffer,
             None => self.create_buffer(),
         };
         let node = self.create_window(buffer)?;
-        self.floating.insert(node);
         self.update_style(node, |style| {
             style.position = Position::Absolute;
-            style.size = Size {
-                width: Dimension::Points(size.width as f32),
-                height: Dimension::Points(size.height as f32),
-            };
-            style.margin = Rect::<LengthPercentageAuto> {
-                left: LengthPercentageAuto::Points(position.x as f32),
-                right: LengthPercentageAuto::Auto,
-                top: LengthPercentageAuto::Points(position.y as f32),
-                bottom: LengthPercentageAuto::Auto,
-            };
+            style.size = size.into();
+            style.margin = position.as_margin();
         })?;
+        self.floating.insert(node);
         self.layout.add_child(self.root, node)?;
         Ok(node)
     }
@@ -522,17 +488,26 @@ impl<T: Terminal> WindowManager<T> {
             };
             let dims = *self.layout.layout(node).map_err(|e| anyhow!("{e}"))?;
 
-            let (width, height) = dims.size.as_dimensions();
+            let Layout {
+                location:
+                    Point {
+                        x: local_x,
+                        y: local_y,
+                    },
+                size: geometry::Size { width, height },
+            } = dims.into();
             self.draw_win_view(node, width, height)?;
 
             // Dimensions are in the parent's local space, so we need to add the parent's location
             // to translate them to screen space.
-            let (parent_x, parent_y) = self
+            let geometry::Point {
+                x: parent_x,
+                y: parent_y,
+            } = self
                 .layout
                 .parent(node)
-                .and_then(|parent| Some(self.layout.layout(parent).ok()?.location.as_dimensions()))
+                .and_then(|parent| Some(self.layout.layout(parent).ok()?.location.into()))
                 .expect("Window has no parent");
-            let (local_x, local_y) = dims.location.as_dimensions();
             let translated_x = parent_x + local_x;
             let translated_y = parent_y + local_y;
 
@@ -541,20 +516,6 @@ impl<T: Terminal> WindowManager<T> {
                     .draw_from_screen(&win.surface, translated_x, translated_y);
             }
         }
-
-        // Unfortunate that we have to iterate twice, but borrow checker :(
-        let floating = self.floating.iter().map(|x| *x).collect::<Vec<_>>();
-        floating.into_iter().try_for_each(|win| {
-            let dims = *self.layout.layout(win)?;
-            let (width, height) = dims.size.as_dimensions();
-            self.draw_win_view(win, width, height)?;
-
-            if let Some(win) = self.windows.get(&win) {
-                let (x, y) = dims.location.as_dimensions();
-                self.terminal.draw_from_screen(&win.surface, x, y);
-            }
-            Result::<_, anyhow::Error>::Ok(())
-        })?;
 
         self.terminal.flush()?;
 
