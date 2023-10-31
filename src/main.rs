@@ -117,6 +117,14 @@ fn next_buffer_handle() -> BufferHandle {
 // If views are owned by the WindowManager, the interface will likely be more complex since
 // any view-specific methods will need to be exposed through the WindowManager via type-safe
 // handles.
+//
+// In either scenario, the WindowManager needs to have some idea of the current contents of a view in a window,
+// so that it can render the view to the window surface. This could be done by:
+// - Re-rendering the entire view for each window directly on re-render, relying
+//   on the view's implementation to preserve state across renders.
+// - Maintaining a separate buffer for each window, and rendering the view to the window's buffer.
+//   - Would require some way to synchronize the view's buffer with the window's buffer.
+//   - Buffer representation TBD: Rope, Vec<String> etc.
 pub struct Buffer {
     inner: crop::Rope,
     id: BufferHandle,
